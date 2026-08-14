@@ -1,0 +1,1643 @@
+> **Note:** This README currently holds the full implementation plan (test commit / team kickoff). The product README lands with Phase 0 Task 7; the plan moves to `docs/superpowers/plans/2026-08-14-flywheel.md`.
+
+# Flywheel Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+>
+> **Repo destination:** this file is committed as `docs/superpowers/plans/2026-08-14-flywheel.md` in Phase 0e.
+
+**Goal:** Build "Flywheel" — a self-improving organic-social GTM agent for the MadeThis bounty: a cross-family multi-agent team (Claude acts, GPT judges) grows any product's account on a simulated Instagram-like platform ("Pictogram") with hidden ground truth, from post → engagement → link clicks → signups → DMs → booked meetings, learning visibly via a versioned playbook + Thompson-sampling bandits.
+
+**Architecture:** Next.js App Router monolith. Three owned modules behind explicit contracts: `src/lib/sim` (world + engagement engine, Track A), `src/lib/agents` + `src/lib/learning` (multi-model loop + learning, Track B), `src/app` + `src/lib/db/queries.ts` (Mission Control UI, Track C). Sim time is request-driven (`advanceTicks` server action — never background timers). All LLM calls go through one registry with `MODEL_MODE=mock|live`; mock returns seeded, schema-valid outputs so the entire loop runs offline and in tests.
+
+**Tech Stack:** TypeScript (strict), Next.js (App Router), Vercel AI SDK (`ai`, `@ai-sdk/anthropic`, `@ai-sdk/openai`), Drizzle ORM + better-sqlite3, Zod, Tailwind + shadcn/ui, Vitest, seedrandom.
+
+## Global Constraints
+
+- Cross-family model assignment is load-bearing: Claude = Strategist/Copywriter/Coach; GPT = Critic/Analyst/persona voices/Community. Never assign an evaluator the same family as the actor it judges.
+- The simulated platform is always called **Pictogram** in UI copy, docs, and screenshots.
+- Sim time advances only via `advanceTicks(worldId, n)`. 1 tick = 1 sim-hour; 24 ticks = 1 sim-day. No `setInterval`/`setTimeout` daemons anywhere.
+- `MODEL_MODE=mock` must run the complete loop with zero network calls. All tests run in mock mode.
+- Bandit arm space ≤ 12 arms (4 archetypes × 3 time slots). Topics are steered by playbook rules, not arms.
+- Shared files `src/lib/db/schema.ts`, `src/lib/types.ts`, `src/lib/contracts.ts` are **additive-only** after Phase 0; announce every change in `docs/PROGRESS.md`.
+- Every PR: `npm run verify` (typecheck + lint + tests) passes before merge. Trunk-based, short-lived branches, small PRs.
+- Agent structured-output failures: retry once, then write a `quarantined` proposal to the activity log. The heartbeat never throws.
+- Sensitive action kinds (`dm_reply` first-touch, pricing/discount posts) always require human approval, even in Autopilot.
+- Secrets: `.env.example` committed; `.env.local` gitignored; keys never appear in docs or screenshots.
+- All randomness flows through `src/lib/rng.ts` seeded per world; identical seeds ⇒ identical sim outcomes.
+
+## File Structure
+
+```
+flywheel/
+├── README.md                       # bounty deliverable (F1 completes)
+├── CONTRIBUTING.md
+├── .env.example
+├── .gitignore
+├── package.json
+├── tsconfig.json
+├── next.config.ts
+├── drizzle.config.ts
+├── vitest.config.ts
+├── components.json                 # shadcn/ui
+├── docs/
+│   ├── ARCHITECTURE.md             # module map, ownership, contracts
+│   ├── HANDOFF.md                  # state, how to run, next steps, gotchas
+│   ├── PROGRESS.md                 # per-track: done / in-flight / blocked
+│   ├── DECISIONS.md                # ADR-lite, append-only
+│   ├── TESTING.md                  # verification workflow
+│   ├── DEMO.md                     # demo script
+│   └── superpowers/
+│       ├── specs/2026-08-14-flywheel-design.md
+│       └── plans/2026-08-14-flywheel.md          # this file
+├── scripts/
+│   ├── smoke-models.ts             # validates both providers + image model
+│   ├── seed-demo-world.ts          # fixed 12-persona world
+│   └── prewarm-demo.ts             # F2: runs demo path in live mode, caches
+├── src/
+│   ├── app/                        # ── Track C owns ──
+│   │   ├── layout.tsx
+│   │   ├── page.tsx                # world switcher / status
+│   │   ├── actions.ts              # server actions (thin wrappers only)
+│   │   ├── feed/page.tsx
+│   │   ├── approvals/page.tsx
+│   │   ├── activity/page.tsx
+│   │   ├── brain/page.tsx          # C2: playbook + bandits + calibration
+│   │   ├── analytics/page.tsx      # C3
+│   │   └── onboarding/page.tsx     # C4: genesis flow
+│   └── lib/
+│       ├── db/
+│       │   ├── schema.ts           # SHARED, additive-only
+│       │   ├── client.ts
+│       │   └── queries.ts          # Track C owns, additive
+│       ├── types.ts                # SHARED domain types
+│       ├── contracts.ts            # Track B owns: zod agent-output schemas
+│       ├── rng.ts                  # seeded RNG helpers
+│       ├── sim/                    # ── Track A owns ──
+│       │   ├── clock.ts            # advanceTicks orchestration
+│       │   ├── engine.ts           # engagement scoring
+│       │   ├── funnel.ts           # clicks/signups/DM initiation
+│       │   ├── dm.ts               # persona DM behavior
+│       │   ├── ambient.ts          # A3: competitor/noise content
+│       │   └── genesis.ts          # A1: product → world pipeline
+│       ├── agents/                 # ── Track B owns ──
+│       │   ├── models.ts           # registry + mock mode + retry/quarantine
+│       │   ├── prompts.ts          # all role prompts
+│       │   ├── orchestrator.ts     # runHeartbeat, decideProposal, publisher
+│       │   ├── analystRunner.ts    # day-boundary evaluation
+│       │   ├── coachRunner.ts      # learning digest → playbook version
+│       │   ├── communityRunner.ts  # DM replies + qualification
+│       │   └── artdirector.ts      # C5: hero images
+│       └── learning/               # ── Track B owns ──
+│           ├── bandit.ts
+│           ├── playbook.ts
+│           └── guardrails.ts       # THE single gate function
+└── tests/
+    ├── engine.test.ts
+    ├── bandit.test.ts
+    ├── playbook.test.ts
+    ├── guardrails.test.ts
+    ├── loop.test.ts                # mock-mode end-to-end walking skeleton
+    └── fixtures/world.ts           # deterministic tiny world builder
+```
+
+---
+
+# PHASE 0 — Walking Skeleton (first commit; single engineer)
+
+## Task 0: Scaffold and configuration
+
+**Files:**
+- Create: `package.json`, `tsconfig.json`, `next.config.ts`, `drizzle.config.ts`, `vitest.config.ts`, `.env.example`, `.gitignore`, `eslint.config.mjs`, `components.json`
+
+**Interfaces:**
+- Consumes: nothing (greenfield)
+- Produces: `npm run dev|verify|test|db:push|db:seed|smoke` scripts every later task relies on
+
+- [ ] **Step 1: Create project and install dependencies**
+
+```bash
+mkdir -p ~/Projects/flywheel && cd ~/Projects/flywheel && git init
+npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --no-import-alias --use-npm
+npm i ai @ai-sdk/anthropic @ai-sdk/openai drizzle-orm better-sqlite3 zod seedrandom
+npm i -D drizzle-kit vitest @types/better-sqlite3 @types/seedrandom tsx
+npx shadcn@latest init -d
+npx shadcn@latest add button card badge tabs textarea dialog table separator switch input label
+```
+
+Expected: `create-next-app` completes; `npm ls ai drizzle-orm` shows both installed.
+
+- [ ] **Step 2: Add scripts to `package.json`** (merge into the generated file)
+
+```json
+{
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "typecheck": "tsc --noEmit",
+    "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "verify": "npm run typecheck && npm run lint && npm run test",
+    "db:push": "drizzle-kit push",
+    "db:seed": "tsx scripts/seed-demo-world.ts",
+    "smoke": "tsx scripts/smoke-models.ts"
+  }
+}
+```
+
+- [ ] **Step 3: Write `drizzle.config.ts`**
+
+```ts
+import { defineConfig } from "drizzle-kit";
+
+export default defineConfig({
+  schema: "./src/lib/db/schema.ts",
+  dialect: "sqlite",
+  dbCredentials: { url: process.env.DB_PATH ?? "./flywheel.db" },
+});
+```
+
+- [ ] **Step 4: Write `vitest.config.ts`**
+
+```ts
+import { defineConfig } from "vitest/config";
+import path from "node:path";
+
+export default defineConfig({
+  test: {
+    environment: "node",
+    env: { MODEL_MODE: "mock", DB_PATH: ":memory:" },
+  },
+  resolve: { alias: { "@": path.resolve(__dirname, "src") } },
+});
+```
+
+- [ ] **Step 5: Write `.env.example`** (and copy to `.env.local`, filling real keys)
+
+```bash
+# Providers — both required for live mode (cross-family judging)
+ANTHROPIC_API_KEY=
+OPENAI_API_KEY=
+
+# Model ids (override if your account differs; scripts/smoke-models.ts validates)
+MODEL_ACTOR=claude-sonnet-4-5          # Strategist / Copywriter / Coach (Anthropic)
+MODEL_JUDGE=gpt-5                      # Critic / Analyst (OpenAI)
+MODEL_CHEAP=gpt-5-mini                 # persona voices / Community (OpenAI)
+MODEL_IMAGE=gpt-image-1                # hero posts only
+
+# mock = full loop offline (default for dev/tests). live = real API calls.
+MODEL_MODE=mock
+DB_PATH=./flywheel.db
+```
+
+- [ ] **Step 6: Append to `.gitignore`**
+
+```
+flywheel.db
+flywheel.db-*
+.env.local
+```
+
+- [ ] **Step 7: Verify scaffold runs**
+
+Run: `npm run typecheck && npm run dev` (Ctrl-C after boot)
+Expected: no type errors; Next.js serves on :3000.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add -A && git commit -m "chore: scaffold Next.js + Drizzle + Vitest + AI SDK project"
+```
+
+## Task 1: Schema, DB client, seeded RNG, domain types
+
+**Files:**
+- Create: `src/lib/db/schema.ts`, `src/lib/db/client.ts`, `src/lib/types.ts`, `src/lib/rng.ts`, `tests/fixtures/world.ts`, `scripts/seed-demo-world.ts`
+
+**Interfaces:**
+- Produces (all tracks consume): every table below; `makeRng(seed: string): () => number`; `db` singleton; `buildTinyWorld(db, seed?): { worldId: string }`
+
+- [ ] **Step 1: Write `src/lib/db/schema.ts`** — the complete shared contract:
+
+```ts
+import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
+
+const id = () => text("id").primaryKey();
+const worldRef = () => text("world_id").notNull();
+
+export const worlds = sqliteTable("worlds", {
+  id: id(),
+  name: text("name").notNull(),
+  productDescription: text("product_description").notNull(),
+  simTick: integer("sim_tick").notNull().default(0),
+  seed: text("seed").notNull(),
+  // hidden ground truth: affinity matrix, algo params — see WorldConfig in types.ts
+  config: text("config", { mode: "json" }).notNull(),
+  status: text("status").notNull().default("active"), // active | paused
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
+export const personas = sqliteTable("personas", {
+  id: id(),
+  worldId: worldRef(),
+  handle: text("handle").notNull(),
+  displayName: text("display_name").notNull(),
+  bio: text("bio").notNull(),
+  segment: text("segment").notNull(),
+  // hidden state: { interests: string[], skepticism: number, engagementPropensity: number,
+  //                 purchaseIntent: number, dmOpenness: number, activeHours: number[] }
+  hidden: text("hidden", { mode: "json" }).notNull(),
+  isFollower: integer("is_follower", { mode: "boolean" }).notNull().default(false),
+  fatigue: integer("fatigue").notNull().default(0),
+});
+
+export const posts = sqliteTable("posts", {
+  id: id(),
+  worldId: worldRef(),
+  authorType: text("author_type").notNull(), // brand | ambient
+  ambientAuthor: text("ambient_author"),
+  proposalId: text("proposal_id"),
+  archetype: text("archetype").notNull(),   // education | story | meme | product
+  topic: text("topic").notNull(),
+  caption: text("caption").notNull(),
+  hashtags: text("hashtags", { mode: "json" }).notNull(),
+  creativeBrief: text("creative_brief").notNull(),
+  imageUrl: text("image_url"),
+  scheduledTick: integer("scheduled_tick").notNull(),
+  publishedTick: integer("published_tick"),
+  status: text("status").notNull().default("scheduled"), // scheduled | published
+});
+
+export const engagements = sqliteTable("engagements", {
+  id: id(),
+  worldId: worldRef(),
+  postId: text("post_id").notNull(),
+  personaId: text("persona_id").notNull(),
+  kind: text("kind").notNull(), // impression | like | comment | save | share | profile_visit | follow
+  commentText: text("comment_text"),
+  tick: integer("tick").notNull(),
+});
+
+export const funnelEvents = sqliteTable("funnel_events", {
+  id: id(),
+  worldId: worldRef(),
+  personaId: text("persona_id").notNull(),
+  kind: text("kind").notNull(), // link_click | signup | dm_started | meeting_booked | disqualified
+  sourcePostId: text("source_post_id"),
+  tick: integer("tick").notNull(),
+});
+
+export const dmThreads = sqliteTable("dm_threads", {
+  id: id(),
+  worldId: worldRef(),
+  personaId: text("persona_id").notNull(),
+  status: text("status").notNull().default("open"), // open | qualified | disqualified | closed
+  turnCount: integer("turn_count").notNull().default(0),
+  createdTick: integer("created_tick").notNull(),
+});
+
+export const dmMessages = sqliteTable("dm_messages", {
+  id: id(),
+  threadId: text("thread_id").notNull(),
+  sender: text("sender").notNull(), // persona | agent
+  text: text("text").notNull(),
+  tick: integer("tick").notNull(),
+});
+
+export const proposals = sqliteTable("proposals", {
+  id: id(),
+  worldId: worldRef(),
+  kind: text("kind").notNull(), // post | reply | dm_reply
+  status: text("status").notNull().default("pending"),
+  // pending | approved | edited_approved | rejected | auto_approved | executed | quarantined | expired
+  payload: text("payload", { mode: "json" }).notNull(),      // kind-specific, see types.ts
+  reasoning: text("reasoning").notNull(),
+  evidence: text("evidence", { mode: "json" }).notNull(),     // { ruleIds, banditArmId, signals }
+  predictedEffect: text("predicted_effect", { mode: "json" }).notNull(),
+  riskClass: text("risk_class").notNull().default("normal"),  // normal | sensitive
+  humanReason: text("human_reason"),
+  humanEditDiff: text("human_edit_diff", { mode: "json" }),
+  createdTick: integer("created_tick").notNull(),
+  decidedTick: integer("decided_tick"),
+});
+
+export const playbookVersions = sqliteTable("playbook_versions", {
+  id: id(),
+  worldId: worldRef(),
+  version: integer("version").notNull(),
+  parentVersion: integer("parent_version"),
+  changeSummary: text("change_summary").notNull(),
+  authorType: text("author_type").notNull(), // seed | coach | human | rollback
+  createdTick: integer("created_tick").notNull(),
+});
+
+// full-copy versioning: every version row-set is complete; diff by ruleKey
+export const playbookRules = sqliteTable("playbook_rules", {
+  id: id(),
+  worldId: worldRef(),
+  versionId: text("version_id").notNull(),
+  ruleKey: text("rule_key").notNull(),  // stable identity across versions
+  category: text("category").notNull(), // voice | content | timing | audience | guardrail
+  text: text("text").notNull(),
+  confidence: real("confidence").notNull().default(0.5),
+  evidence: text("evidence", { mode: "json" }).notNull(), // { sourceType: seed|outcome|rejection|edit, refs: string[] }
+});
+
+export const banditArms = sqliteTable("bandit_arms", {
+  id: id(),
+  worldId: worldRef(),
+  archetype: text("archetype").notNull(),
+  timeSlot: text("time_slot").notNull(), // morning | midday | evening
+  alpha: real("alpha").notNull().default(2),
+  beta: real("beta").notNull().default(2),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+});
+
+export const banditObservations = sqliteTable("bandit_observations", {
+  id: id(),
+  armId: text("arm_id").notNull(),
+  postId: text("post_id").notNull(),
+  reward: real("reward").notNull(), // 0..1
+  tick: integer("tick").notNull(),
+});
+
+export const banditSnapshots = sqliteTable("bandit_snapshots", {
+  id: id(),
+  worldId: worldRef(),
+  playbookVersionId: text("playbook_version_id").notNull(),
+  armsJson: text("arms_json", { mode: "json" }).notNull(),
+});
+
+export const outcomeReports = sqliteTable("outcome_reports", {
+  id: id(),
+  worldId: worldRef(),
+  postId: text("post_id").notNull(),
+  windowTicks: integer("window_ticks").notNull(),
+  actual: text("actual", { mode: "json" }).notNull(),
+  predicted: text("predicted", { mode: "json" }).notNull(),
+  verdict: text("verdict").notNull(), // exceeded | met | missed
+  attribution: text("attribution", { mode: "json" }).notNull(),
+  summary: text("summary").notNull(),
+  tick: integer("tick").notNull(),
+});
+
+export const activityLog = sqliteTable("activity_log", {
+  id: id(),
+  worldId: worldRef(),
+  tick: integer("tick").notNull(),
+  actor: text("actor").notNull(), // strategist | copywriter | critic | analyst | coach | community | publisher | human | system
+  action: text("action").notNull(),
+  refType: text("ref_type"),
+  refId: text("ref_id"),
+  status: text("status").notNull(),
+  summary: text("summary").notNull(),
+  detail: text("detail", { mode: "json" }),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
+export const settings = sqliteTable("settings", {
+  worldId: text("world_id").primaryKey(),
+  mode: text("mode").notNull().default("propose"), // propose | autopilot
+  maxPostsPerDay: integer("max_posts_per_day").notNull().default(3),
+  maxDmsPerDay: integer("max_dms_per_day").notNull().default(5),
+  quietHours: text("quiet_hours", { mode: "json" }).notNull(), // [startHour, endHour]
+  imageBudget: integer("image_budget").notNull().default(10),
+  bannedTopics: text("banned_topics", { mode: "json" }).notNull(),
+  paused: integer("paused", { mode: "boolean" }).notNull().default(false),
+});
+```
+
+- [ ] **Step 2: Write `src/lib/db/client.ts`**
+
+```ts
+import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import * as schema from "./schema";
+
+const globalForDb = globalThis as unknown as { __flywheelDb?: ReturnType<typeof create> };
+
+function create() {
+  const sqlite = new Database(process.env.DB_PATH ?? "./flywheel.db");
+  sqlite.pragma("journal_mode = WAL");
+  return drizzle(sqlite, { schema });
+}
+
+export const db = globalForDb.__flywheelDb ?? (globalForDb.__flywheelDb = create());
+export type Db = typeof db;
+```
+
+- [ ] **Step 3: Write `src/lib/rng.ts`**
+
+```ts
+import seedrandom from "seedrandom";
+
+export type Rng = () => number;
+
+export function makeRng(seed: string): Rng {
+  return seedrandom(seed);
+}
+
+/** Stable per-entity rng so outcomes don't depend on iteration order. */
+export function subRng(worldSeed: string, ...parts: (string | number)[]): Rng {
+  return seedrandom(`${worldSeed}:${parts.join(":")}`);
+}
+
+export function pick<T>(rng: Rng, items: T[]): T {
+  return items[Math.floor(rng() * items.length)];
+}
+```
+
+- [ ] **Step 4: Write `src/lib/types.ts`** (domain types both other shared files import)
+
+```ts
+export type Archetype = "education" | "story" | "meme" | "product";
+export type TimeSlot = "morning" | "midday" | "evening";
+export const TIME_SLOTS: Record<TimeSlot, number[]> = {
+  morning: [7, 8, 9],
+  midday: [11, 12, 13],
+  evening: [18, 19, 20],
+};
+
+export interface PersonaHidden {
+  interests: string[];
+  skepticism: number;            // 0..1
+  engagementPropensity: number;  // 0..1
+  purchaseIntent: number;        // 0..1
+  dmOpenness: number;            // 0..1
+  activeHours: number[];         // hours 0..23
+}
+
+export interface WorldConfig {
+  /** hidden ground truth: segment -> archetype -> affinity 0..1 */
+  affinity: Record<string, Record<Archetype, number>>;
+  algo: {
+    earlyVelocityBoost: number;   // e.g. 1.3
+    overPostPenalty: number;      // e.g. 0.6 applied beyond maxOrganicReachPostsPerDay
+    maxOrganicReachPostsPerDay: number; // e.g. 2
+    discoveryFloor: number;       // min non-follower sample per post, e.g. 10
+    discoveryRate: number;        // fraction of non-followers sampled, e.g. 0.15
+  };
+  topics: string[];
+}
+
+export interface PredictedEffect {
+  impressions: [number, number];
+  likes: [number, number];
+  linkClicks: [number, number];
+  signups: [number, number];
+}
+
+export interface PostPayload {
+  archetype: Archetype;
+  timeSlot: TimeSlot;
+  topic: string;
+  caption: string;
+  hashtags: string[];
+  creativeBrief: string;
+  scheduledTick: number;
+}
+
+export interface DmReplyPayload { threadId: string; text: string; }
+export interface ReplyPayload { postId: string; commentEngagementId: string; text: string; }
+```
+
+- [ ] **Step 5: Write `tests/fixtures/world.ts`** — deterministic tiny world used by every test:
+
+```ts
+import { db } from "@/lib/db/client";
+import { worlds, personas, settings, playbookVersions, playbookRules, banditArms } from "@/lib/db/schema";
+import type { WorldConfig, PersonaHidden } from "@/lib/types";
+import { randomUUID } from "node:crypto";
+
+const SEGMENTS = ["coffee-nerds", "busy-pros", "cafe-owners"] as const;
+
+export function buildTinyWorld(seed = "test-seed"): { worldId: string } {
+  const worldId = randomUUID();
+  const config: WorldConfig = {
+    affinity: {
+      "coffee-nerds": { education: 0.9, story: 0.5, meme: 0.6, product: 0.4 },
+      "busy-pros":    { education: 0.4, story: 0.6, meme: 0.3, product: 0.7 },
+      "cafe-owners":  { education: 0.7, story: 0.4, meme: 0.2, product: 0.9 },
+    },
+    algo: { earlyVelocityBoost: 1.3, overPostPenalty: 0.6, maxOrganicReachPostsPerDay: 2, discoveryFloor: 10, discoveryRate: 0.15 },
+    topics: ["brewing-science", "morning-routine", "cafe-economics", "bean-sourcing"],
+  };
+  db.insert(worlds).values({
+    id: worldId, name: "TestBrew", productDescription: "Cold brew concentrate for coffee obsessives",
+    simTick: 0, seed, config, status: "active", createdAt: new Date(),
+  }).run();
+  db.insert(settings).values({ worldId, quietHours: [23, 6], bannedTopics: ["politics"] }).run();
+
+  // 12 personas, 4 per segment, deterministic hidden state
+  SEGMENTS.forEach((segment, s) => {
+    for (let i = 0; i < 4; i++) {
+      const hidden: PersonaHidden = {
+        interests: [config.topics[(s + i) % config.topics.length], config.topics[(s + i + 1) % config.topics.length]],
+        skepticism: 0.2 + 0.15 * i,
+        engagementPropensity: 0.4 + 0.12 * i,
+        purchaseIntent: 0.25 + 0.15 * s,
+        dmOpenness: 0.3 + 0.1 * i,
+        activeHours: i % 2 === 0 ? [7, 8, 9, 12, 19] : [11, 12, 13, 18, 20],
+      };
+      db.insert(personas).values({
+        id: randomUUID(), worldId, handle: `${segment}-${i}`, displayName: `${segment} ${i}`,
+        bio: `persona ${i} of ${segment}`, segment, hidden, isFollower: i === 0, fatigue: 0,
+      }).run();
+    }
+  });
+
+  // playbook v1 (seed)
+  const versionId = randomUUID();
+  db.insert(playbookVersions).values({
+    id: versionId, worldId, version: 1, changeSummary: "Seed hypotheses", authorType: "seed", createdTick: 0,
+  }).run();
+  const seedRules = [
+    { ruleKey: "voice-1", category: "voice", text: "Confident, warm, no hype words." },
+    { ruleKey: "content-1", category: "content", text: "Hypothesis: education content wins with enthusiasts." },
+    { ruleKey: "timing-1", category: "timing", text: "Hypothesis: mornings perform best." },
+  ];
+  for (const r of seedRules) {
+    db.insert(playbookRules).values({
+      id: randomUUID(), worldId, versionId, confidence: 0.4,
+      evidence: { sourceType: "seed", refs: [] }, ...r,
+    }).run();
+  }
+
+  // 12 bandit arms
+  for (const archetype of ["education", "story", "meme", "product"] as const) {
+    for (const timeSlot of ["morning", "midday", "evening"] as const) {
+      db.insert(banditArms).values({ id: randomUUID(), worldId, archetype, timeSlot }).run();
+    }
+  }
+  return { worldId };
+}
+```
+
+- [ ] **Step 6: Write `scripts/seed-demo-world.ts`** (same builder, on-disk DB)
+
+```ts
+import { buildTinyWorld } from "../tests/fixtures/world";
+const { worldId } = buildTinyWorld("demo-seed");
+console.log(`Seeded demo world ${worldId}`);
+```
+
+- [ ] **Step 7: Push schema and seed**
+
+Run: `npm run db:push && npm run db:seed`
+Expected: tables created; prints `Seeded demo world <uuid>`.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add -A && git commit -m "feat: schema, db client, seeded rng, tiny world fixture"
+```
+
+## Task 2: Engagement engine v0 (TDD)
+
+**Files:**
+- Create: `src/lib/sim/engine.ts`, `tests/engine.test.ts`
+
+**Interfaces:**
+- Consumes: `personas.hidden`, `worlds.config`, `posts`, `subRng`
+- Produces (clock.ts consumes): `runEngagementWave(worldId: string, postId: string, tick: number): void` — inserts `engagements` rows; `scorePersonaPost(...)` exported for tests
+
+- [ ] **Step 1: Write the failing tests** — `tests/engine.test.ts`:
+
+```ts
+import { describe, it, expect, beforeEach } from "vitest";
+import { db } from "@/lib/db/client";
+import { posts, engagements, personas } from "@/lib/db/schema";
+import { buildTinyWorld } from "./fixtures/world";
+import { runEngagementWave } from "@/lib/sim/engine";
+import { randomUUID } from "node:crypto";
+import { eq } from "drizzle-orm";
+
+function insertPost(worldId: string, topic: string, tick = 8) {
+  const id = randomUUID();
+  db.insert(posts).values({
+    id, worldId, authorType: "brand", archetype: "education", topic,
+    caption: "How water temp changes extraction", hashtags: ["#coffee"],
+    creativeBrief: "diagram", scheduledTick: tick, publishedTick: tick, status: "published",
+  }).run();
+  return id;
+}
+
+describe("engagement engine", () => {
+  let worldId: string;
+  beforeEach(() => { worldId = buildTinyWorld(`seed-${randomUUID()}`).worldId; });
+
+  it("is deterministic for the same world seed", () => {
+    const w1 = buildTinyWorld("fixed").worldId;
+    const w2 = buildTinyWorld("fixed").worldId;
+    // note: persona ids differ, so compare by handle
+    const run = (wid: string) => {
+      const pid = insertPost(wid, "brewing-science");
+      runEngagementWave(wid, pid, 8);
+      return db.select({ kind: engagements.kind, personaId: engagements.personaId })
+        .from(engagements).where(eq(engagements.worldId, wid)).all()
+        .map((e) => `${db.select().from(personas).where(eq(personas.id, e.personaId)).get()!.handle}:${e.kind}`)
+        .sort();
+    };
+    expect(run(w1)).toEqual(run(w2));
+  });
+
+  it("gives interest-matching posts more engagement than mismatched ones", () => {
+    const match = insertPost(worldId, "brewing-science");
+    const miss = insertPost(worldId, "unrelated-topic");
+    runEngagementWave(worldId, match, 8);
+    runEngagementWave(worldId, miss, 8);
+    const count = (pid: string) =>
+      db.select().from(engagements).where(eq(engagements.postId, pid)).all()
+        .filter((e) => e.kind !== "impression").length;
+    expect(count(match)).toBeGreaterThan(count(miss));
+  });
+
+  it("discovery floor: a 0-follower world still yields >= 10 impressions", () => {
+    db.update(personas).set({ isFollower: false }).where(eq(personas.worldId, worldId)).run();
+    const pid = insertPost(worldId, "brewing-science");
+    runEngagementWave(worldId, pid, 8);
+    const impressions = db.select().from(engagements)
+      .where(eq(engagements.postId, pid)).all()
+      .filter((e) => e.kind === "impression").length;
+    expect(impressions).toBeGreaterThanOrEqual(10);
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify failure**
+
+Run: `npm test`
+Expected: FAIL — `Cannot find module '@/lib/sim/engine'`.
+
+- [ ] **Step 3: Implement `src/lib/sim/engine.ts`**
+
+```ts
+import { db } from "@/lib/db/client";
+import { engagements, personas, posts, worlds } from "@/lib/db/schema";
+import type { PersonaHidden, WorldConfig, Archetype } from "@/lib/types";
+import { subRng } from "@/lib/rng";
+import { eq, and } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+
+export interface ScoreContext {
+  config: WorldConfig;
+  brandPostsToday: number;
+  tick: number;
+}
+
+export function scorePersonaPost(
+  hidden: PersonaHidden, segment: string, archetype: Archetype, topic: string,
+  ctx: ScoreContext, noise: number,
+): number {
+  const interest = hidden.interests.includes(topic) ? 1 : 0.15;
+  const affinity = ctx.config.affinity[segment]?.[archetype] ?? 0.5;
+  const hour = ctx.tick % 24;
+  const timeMatch = hidden.activeHours.includes(hour) ? 1 : 0.35;
+  let score =
+    0.4 * interest + 0.25 * affinity + 0.15 * timeMatch + 0.2 * hidden.engagementPropensity;
+  if (ctx.brandPostsToday > ctx.config.algo.maxOrganicReachPostsPerDay) {
+    score *= ctx.config.algo.overPostPenalty;
+  }
+  return score + (noise - 0.5) * 0.2; // noise in [-0.1, +0.1]
+}
+
+const THRESHOLDS = { like: 0.6, comment: 0.75, save: 0.8, profile_visit: 0.85 } as const;
+
+export function runEngagementWave(worldId: string, postId: string, tick: number): void {
+  const world = db.select().from(worlds).where(eq(worlds.id, worldId)).get()!;
+  const post = db.select().from(posts).where(eq(posts.id, postId)).get()!;
+  const config = world.config as WorldConfig;
+  const all = db.select().from(personas).where(eq(personas.worldId, worldId)).all();
+
+  const dayStart = tick - (tick % 24);
+  const brandPostsToday = db.select().from(posts)
+    .where(and(eq(posts.worldId, worldId), eq(posts.authorType, "brand"))).all()
+    .filter((p) => (p.publishedTick ?? -1) >= dayStart).length;
+
+  const followers = all.filter((p) => p.isFollower);
+  const nonFollowers = all.filter((p) => !p.isFollower);
+
+  // discovery sample: weighted by interest match, at least discoveryFloor personas
+  const sampleSize = Math.max(
+    config.algo.discoveryFloor,
+    Math.floor(nonFollowers.length * config.algo.discoveryRate),
+  );
+  const ranked = nonFollowers
+    .map((p) => {
+      const h = p.hidden as PersonaHidden;
+      const w = h.interests.includes(post.topic) ? 1 : 0.2;
+      return { p, key: w * subRng(world.seed, "disc", postId, p.id)() };
+    })
+    .sort((a, b) => b.key - a.key)
+    .slice(0, Math.min(sampleSize, nonFollowers.length))
+    .map((r) => r.p);
+
+  const reachSet = [...followers, ...ranked];
+  const ctx: ScoreContext = { config, brandPostsToday, tick };
+
+  for (const persona of reachSet) {
+    const hidden = persona.hidden as PersonaHidden;
+    const rng = subRng(world.seed, "eng", postId, persona.id);
+    const score = scorePersonaPost(hidden, persona.segment, post.archetype as Archetype, post.topic, ctx, rng());
+    const insert = (kind: string, commentText?: string) =>
+      db.insert(engagements).values({
+        id: randomUUID(), worldId, postId, personaId: persona.id, kind, commentText, tick,
+      }).run();
+
+    insert("impression");
+    if (score >= THRESHOLDS.like) insert("like");
+    if (score >= THRESHOLDS.comment) insert("comment", "[pending persona voice]");
+    if (score >= THRESHOLDS.save) insert("save");
+    if (score >= THRESHOLDS.profile_visit) insert("profile_visit");
+  }
+}
+```
+
+- [ ] **Step 4: Run tests**
+
+Run: `npm test`
+Expected: engine tests PASS. (Comment text is a placeholder here; persona voices arrive in Task 5.)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add -A && git commit -m "feat: deterministic engagement engine with discovery floor"
+```
+
+## Task 3: Learning primitives — bandit, playbook, guardrails (TDD)
+
+**Files:**
+- Create: `src/lib/learning/bandit.ts`, `src/lib/learning/playbook.ts`, `src/lib/learning/guardrails.ts`
+- Test: `tests/bandit.test.ts`, `tests/playbook.test.ts`, `tests/guardrails.test.ts`
+
+**Interfaces:**
+- Produces (Track B orchestrator + Track C brain view consume):
+  - `sampleArm(worldId, rng): BanditArmRow` — Thompson sample over enabled arms
+  - `recordReward(armId, postId, reward, tick): void` — updates alpha/beta + observation row
+  - `computeReward(actual: {impressions,likes,linkClicks,signups}, predicted: PredictedEffect): number` — 0..1
+  - `createPlaybookVersion(worldId, changes, author, tick): { versionId, version, diff }`
+  - `getActiveRules(worldId): PlaybookRuleRow[]`
+  - `diffVersions(worldId, vA, vB): { added, amended, retired }`
+  - `rollbackTo(worldId, targetVersion, tick): { versionId }`
+  - `checkGuardrails(worldId, action): { allowed: boolean; requiresApproval: boolean; reasons: string[] }`
+
+- [ ] **Step 1: Write failing tests** — `tests/bandit.test.ts`:
+
+```ts
+import { describe, it, expect } from "vitest";
+import { buildTinyWorld } from "./fixtures/world";
+import { db } from "@/lib/db/client";
+import { banditArms } from "@/lib/db/schema";
+import { sampleArm, recordReward, computeReward } from "@/lib/learning/bandit";
+import { makeRng } from "@/lib/rng";
+import { eq, and } from "drizzle-orm";
+
+describe("thompson sampling bandit", () => {
+  it("converges to the better arm", () => {
+    const { worldId } = buildTinyWorld("bandit-seed");
+    const rng = makeRng("bandit-test");
+    const good = db.select().from(banditArms)
+      .where(and(eq(banditArms.worldId, worldId), eq(banditArms.archetype, "education"), eq(banditArms.timeSlot, "morning"))).get()!;
+    // simulate 60 rounds against ground truth: education/morning pays 0.8, others 0.2
+    for (let i = 0; i < 60; i++) {
+      const arm = sampleArm(worldId, rng);
+      const payoff = arm.id === good.id ? (rng() < 0.8 ? 1 : 0) : (rng() < 0.2 ? 1 : 0);
+      recordReward(arm.id, `post-${i}`, payoff, i);
+    }
+    let goodPicks = 0;
+    for (let i = 0; i < 100; i++) if (sampleArm(worldId, rng).id === good.id) goodPicks++;
+    expect(goodPicks).toBeGreaterThan(60);
+  });
+
+  it("computeReward blends funnel metrics into 0..1", () => {
+    const predicted = { impressions: [20, 40], likes: [5, 10], linkClicks: [1, 3], signups: [0, 1] } as const;
+    expect(computeReward({ impressions: 45, likes: 12, linkClicks: 4, signups: 2 }, predicted)).toBe(1);
+    expect(computeReward({ impressions: 5, likes: 0, linkClicks: 0, signups: 0 }, predicted)).toBe(0);
+  });
+});
+```
+
+`tests/playbook.test.ts`:
+
+```ts
+import { describe, it, expect } from "vitest";
+import { buildTinyWorld } from "./fixtures/world";
+import { createPlaybookVersion, getActiveRules, diffVersions, rollbackTo } from "@/lib/learning/playbook";
+
+describe("versioned playbook", () => {
+  it("applies add/amend/retire and diffs versions", () => {
+    const { worldId } = buildTinyWorld("pb-seed");
+    const { version } = createPlaybookVersion(worldId, {
+      add: [{ category: "timing", text: "Post education at 7am", evidenceRefs: ["report-1"], sourceType: "outcome" }],
+      amend: [{ ruleKey: "voice-1", text: "Confident, warm, max 5 hashtags." }],
+      retire: ["content-1"],
+    }, "coach", 24);
+    expect(version).toBe(2);
+    const rules = getActiveRules(worldId);
+    expect(rules.find((r) => r.ruleKey === "content-1")).toBeUndefined();
+    expect(rules.find((r) => r.ruleKey === "voice-1")!.text).toContain("max 5 hashtags");
+    const diff = diffVersions(worldId, 1, 2);
+    expect(diff.added.length).toBe(1);
+    expect(diff.amended.length).toBe(1);
+    expect(diff.retired).toEqual(["content-1"]);
+  });
+
+  it("rollback restores target rules as a NEW version", () => {
+    const { worldId } = buildTinyWorld("pb-seed-2");
+    createPlaybookVersion(worldId, { add: [{ category: "content", text: "bad rule", evidenceRefs: [], sourceType: "outcome" }], amend: [], retire: [] }, "coach", 24);
+    rollbackTo(worldId, 1, 48);
+    const rules = getActiveRules(worldId);
+    expect(rules.map((r) => r.ruleKey).sort()).toEqual(["content-1", "timing-1", "voice-1"]);
+    expect(rules.length).toBe(3);
+  });
+});
+```
+
+`tests/guardrails.test.ts`:
+
+```ts
+import { describe, it, expect } from "vitest";
+import { buildTinyWorld } from "./fixtures/world";
+import { db } from "@/lib/db/client";
+import { settings, posts } from "@/lib/db/schema";
+import { checkGuardrails } from "@/lib/learning/guardrails";
+import { eq } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+
+describe("guardrails single gate", () => {
+  it("blocks past the posts/day cap", () => {
+    const { worldId } = buildTinyWorld("gr-seed");
+    for (let i = 0; i < 3; i++) {
+      db.insert(posts).values({
+        id: randomUUID(), worldId, authorType: "brand", archetype: "meme", topic: "t",
+        caption: "c", hashtags: [], creativeBrief: "b", scheduledTick: 8, publishedTick: 8, status: "published",
+      }).run();
+    }
+    const res = checkGuardrails(worldId, { kind: "post", topic: "t", scheduledTick: 9, riskClass: "normal" });
+    expect(res.allowed).toBe(false);
+    expect(res.reasons.join(" ")).toMatch(/cap/i);
+  });
+
+  it("blocks banned topics and quiet hours; sensitive always requires approval in autopilot", () => {
+    const { worldId } = buildTinyWorld("gr-seed-2");
+    db.update(settings).set({ mode: "autopilot" }).where(eq(settings.worldId, worldId)).run();
+    expect(checkGuardrails(worldId, { kind: "post", topic: "politics", scheduledTick: 9, riskClass: "normal" }).allowed).toBe(false);
+    expect(checkGuardrails(worldId, { kind: "post", topic: "t", scheduledTick: 23, riskClass: "normal" }).allowed).toBe(false);
+    const dm = checkGuardrails(worldId, { kind: "dm_reply", topic: "t", scheduledTick: 9, riskClass: "sensitive" });
+    expect(dm.allowed).toBe(true);
+    expect(dm.requiresApproval).toBe(true);
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify failures**
+
+Run: `npm test`
+Expected: FAIL — modules not found.
+
+- [ ] **Step 3: Implement.** `src/lib/learning/bandit.ts`:
+
+```ts
+import { db } from "@/lib/db/client";
+import { banditArms, banditObservations } from "@/lib/db/schema";
+import type { PredictedEffect } from "@/lib/types";
+import type { Rng } from "@/lib/rng";
+import { eq, and } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+
+/** Marsaglia-Tsang-free gamma sampler adequate for demo-scale Beta sampling. */
+function sampleGamma(shape: number, rng: Rng): number {
+  // sum-of-exponentials for integer part + Johnk for fractional part
+  let g = 0;
+  const n = Math.floor(shape);
+  for (let i = 0; i < n; i++) g += -Math.log(1 - rng());
+  const frac = shape - n;
+  if (frac > 1e-9) {
+    let x = 0, y = 0;
+    do { x = Math.pow(rng(), 1 / frac); y = x + Math.pow(rng(), 1 / (1 - frac)); } while (y > 1 || y === 0);
+    g += (x / y) * -Math.log(1 - rng());
+  }
+  return g;
+}
+
+export function sampleBeta(alpha: number, beta: number, rng: Rng): number {
+  const a = sampleGamma(alpha, rng);
+  const b = sampleGamma(beta, rng);
+  return a / (a + b);
+}
+
+export function sampleArm(worldId: string, rng: Rng) {
+  const arms = db.select().from(banditArms)
+    .where(and(eq(banditArms.worldId, worldId), eq(banditArms.enabled, true))).all();
+  let best = arms[0], bestTheta = -1;
+  for (const arm of arms) {
+    const theta = sampleBeta(arm.alpha, arm.beta, rng);
+    if (theta > bestTheta) { bestTheta = theta; best = arm; }
+  }
+  return best;
+}
+
+export function recordReward(armId: string, postId: string, reward: number, tick: number): void {
+  const arm = db.select().from(banditArms).where(eq(banditArms.id, armId)).get()!;
+  db.update(banditArms)
+    .set({ alpha: arm.alpha + reward, beta: arm.beta + (1 - reward) })
+    .where(eq(banditArms.id, armId)).run();
+  db.insert(banditObservations).values({ id: randomUUID(), armId, postId, reward, tick }).run();
+}
+
+/** Fraction of funnel metrics at/above predicted midpoint; weights deeper funnel higher. */
+export function computeReward(
+  actual: { impressions: number; likes: number; linkClicks: number; signups: number },
+  predicted: PredictedEffect,
+): number {
+  const mid = (r: [number, number]) => (r[0] + r[1]) / 2;
+  const hits = [
+    { w: 1, ok: actual.impressions >= mid(predicted.impressions) },
+    { w: 1, ok: actual.likes >= mid(predicted.likes) },
+    { w: 2, ok: actual.linkClicks >= mid(predicted.linkClicks) },
+    { w: 2, ok: actual.signups >= mid(predicted.signups) },
+  ];
+  const total = hits.reduce((s, h) => s + h.w, 0);
+  return hits.reduce((s, h) => s + (h.ok ? h.w : 0), 0) / total;
+}
+```
+
+`src/lib/learning/playbook.ts`:
+
+```ts
+import { db } from "@/lib/db/client";
+import { playbookVersions, playbookRules, banditArms, banditSnapshots } from "@/lib/db/schema";
+import { eq, and, desc } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+
+export interface PlaybookChanges {
+  add: { category: string; text: string; evidenceRefs: string[]; sourceType: "outcome" | "rejection" | "edit" }[];
+  amend: { ruleKey: string; text: string }[];
+  retire: string[];
+}
+
+function latestVersion(worldId: string) {
+  return db.select().from(playbookVersions)
+    .where(eq(playbookVersions.worldId, worldId))
+    .orderBy(desc(playbookVersions.version)).get()!;
+}
+
+function rulesOf(worldId: string, versionId: string) {
+  return db.select().from(playbookRules)
+    .where(and(eq(playbookRules.worldId, worldId), eq(playbookRules.versionId, versionId))).all();
+}
+
+export function getActiveRules(worldId: string) {
+  return rulesOf(worldId, latestVersion(worldId).id);
+}
+
+export function createPlaybookVersion(
+  worldId: string, changes: PlaybookChanges,
+  author: "coach" | "human" | "rollback", tick: number, summaryOverride?: string,
+) {
+  const parent = latestVersion(worldId);
+  const parentRules = rulesOf(worldId, parent.id);
+  const versionId = randomUUID();
+  const version = parent.version + 1;
+
+  const next = parentRules
+    .filter((r) => !changes.retire.includes(r.ruleKey))
+    .map((r) => {
+      const amend = changes.amend.find((a) => a.ruleKey === r.ruleKey);
+      return { ...r, text: amend ? amend.text : r.text };
+    });
+  for (const a of changes.add) {
+    next.push({
+      id: "", worldId, versionId, ruleKey: `rule-${randomUUID().slice(0, 8)}`,
+      category: a.category, text: a.text, confidence: 0.5,
+      evidence: { sourceType: a.sourceType, refs: a.evidenceRefs },
+    } as (typeof parentRules)[number]);
+  }
+
+  const summary = summaryOverride ??
+    `+${changes.add.length} rules, ~${changes.amend.length} amended, -${changes.retire.length} retired`;
+  db.insert(playbookVersions).values({
+    id: versionId, worldId, version, parentVersion: parent.version,
+    changeSummary: summary, authorType: author, createdTick: tick,
+  }).run();
+  for (const r of next) {
+    db.insert(playbookRules).values({ ...r, id: randomUUID(), versionId }).run();
+  }
+  // snapshot bandit posteriors alongside every playbook version (cheap rollback context)
+  const arms = db.select().from(banditArms).where(eq(banditArms.worldId, worldId)).all();
+  db.insert(banditSnapshots).values({ id: randomUUID(), worldId, playbookVersionId: versionId, armsJson: arms }).run();
+
+  return { versionId, version, diff: diffVersions(worldId, parent.version, version) };
+}
+
+export function diffVersions(worldId: string, vA: number, vB: number) {
+  const va = db.select().from(playbookVersions)
+    .where(and(eq(playbookVersions.worldId, worldId), eq(playbookVersions.version, vA))).get()!;
+  const vb = db.select().from(playbookVersions)
+    .where(and(eq(playbookVersions.worldId, worldId), eq(playbookVersions.version, vB))).get()!;
+  const a = new Map(rulesOf(worldId, va.id).map((r) => [r.ruleKey, r]));
+  const b = new Map(rulesOf(worldId, vb.id).map((r) => [r.ruleKey, r]));
+  return {
+    added: [...b.values()].filter((r) => !a.has(r.ruleKey)),
+    amended: [...b.values()].filter((r) => a.has(r.ruleKey) && a.get(r.ruleKey)!.text !== r.text),
+    retired: [...a.keys()].filter((k) => !b.has(k)),
+  };
+}
+
+export function rollbackTo(worldId: string, targetVersion: number, tick: number) {
+  const current = latestVersion(worldId);
+  const target = db.select().from(playbookVersions)
+    .where(and(eq(playbookVersions.worldId, worldId), eq(playbookVersions.version, targetVersion))).get()!;
+  const targetRules = rulesOf(worldId, target.id);
+  const currentRules = rulesOf(worldId, current.id);
+  const targetKeys = new Set(targetRules.map((r) => r.ruleKey));
+  const changes: PlaybookChanges = {
+    add: [], // restore-by-copy below instead of add (keeps ruleKeys stable)
+    amend: targetRules
+      .filter((r) => currentRules.some((c) => c.ruleKey === r.ruleKey && c.text !== r.text))
+      .map((r) => ({ ruleKey: r.ruleKey, text: r.text })),
+    retire: currentRules.filter((c) => !targetKeys.has(c.ruleKey)).map((c) => c.ruleKey),
+  };
+  const res = createPlaybookVersion(worldId, changes, "rollback", tick, `rollback to v${targetVersion}`);
+  // re-insert rules that existed in target but were retired since (stable ruleKey restore)
+  const afterKeys = new Set(getActiveRules(worldId).map((r) => r.ruleKey));
+  for (const r of targetRules) {
+    if (!afterKeys.has(r.ruleKey)) {
+      db.insert(playbookRules).values({ ...r, id: randomUUID(), versionId: res.versionId }).run();
+    }
+  }
+  return { versionId: res.versionId };
+}
+```
+
+`src/lib/learning/guardrails.ts`:
+
+```ts
+import { db } from "@/lib/db/client";
+import { settings, posts, funnelEvents } from "@/lib/db/schema";
+import { eq, and } from "drizzle-orm";
+
+export interface GuardrailAction {
+  kind: "post" | "reply" | "dm_reply";
+  topic: string;
+  scheduledTick: number;
+  riskClass: "normal" | "sensitive";
+}
+
+export function checkGuardrails(worldId: string, action: GuardrailAction) {
+  const s = db.select().from(settings).where(eq(settings.worldId, worldId)).get()!;
+  const reasons: string[] = [];
+
+  if (s.paused) reasons.push("agent is paused");
+
+  const banned = s.bannedTopics as string[];
+  if (banned.some((b) => action.topic.toLowerCase().includes(b.toLowerCase()))) {
+    reasons.push(`banned topic: ${action.topic}`);
+  }
+
+  const hour = action.scheduledTick % 24;
+  const [qStart, qEnd] = s.quietHours as [number, number];
+  const inQuiet = qStart > qEnd ? hour >= qStart || hour < qEnd : hour >= qStart && hour < qEnd;
+  if (inQuiet && action.kind !== "dm_reply") reasons.push(`quiet hours (${qStart}:00-${qEnd}:00)`);
+
+  if (action.kind === "post") {
+    const dayStart = action.scheduledTick - (action.scheduledTick % 24);
+    const today = db.select().from(posts)
+      .where(and(eq(posts.worldId, worldId), eq(posts.authorType, "brand"))).all()
+      .filter((p) => p.scheduledTick >= dayStart).length;
+    if (today >= s.maxPostsPerDay) reasons.push(`posts/day cap (${s.maxPostsPerDay}) reached`);
+  }
+  if (action.kind === "dm_reply") {
+    const dayStart = action.scheduledTick - (action.scheduledTick % 24);
+    const dmsToday = db.select().from(funnelEvents)
+      .where(and(eq(funnelEvents.worldId, worldId), eq(funnelEvents.kind, "dm_started"))).all()
+      .filter((e) => e.tick >= dayStart).length;
+    if (dmsToday >= s.maxDmsPerDay) reasons.push(`DMs/day cap (${s.maxDmsPerDay}) reached`);
+  }
+
+  const requiresApproval = s.mode === "propose" || action.riskClass === "sensitive";
+  return { allowed: reasons.length === 0, requiresApproval, reasons };
+}
+```
+
+- [ ] **Step 4: Run tests**
+
+Run: `npm test`
+Expected: bandit, playbook, guardrails suites PASS (engine still green).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add -A && git commit -m "feat: thompson bandit, versioned playbook with rollback, guardrail gate"
+```
+
+## Task 4: Agent contracts, model registry with mock mode, smoke script
+
+**Files:**
+- Create: `src/lib/contracts.ts`, `src/lib/agents/models.ts`, `src/lib/agents/prompts.ts`, `scripts/smoke-models.ts`
+
+**Interfaces:**
+- Produces (orchestrator + all runners consume):
+  - `callAgent<T>(role: AgentRole, schema: z.ZodType<T>, system: string, user: string, opts: { worldSeed: string; refId: string }): Promise<{ ok: true; data: T } | { ok: false; error: string }>` — retries once, never throws
+  - Zod schemas: `StrategistOutput`, `CopywriterOutput`, `CriticOutput`, `AnalystOutput`, `CoachOutput`, `CommunityOutput`, `PersonaVoiceOutput`
+  - `type AgentRole = "strategist" | "copywriter" | "critic" | "analyst" | "coach" | "community" | "persona"`
+
+- [ ] **Step 1: Write `src/lib/contracts.ts`** (complete zod contracts):
+
+```ts
+import { z } from "zod";
+
+const range = z.tuple([z.number(), z.number()]);
+export const PredictedEffectSchema = z.object({
+  impressions: range, likes: range, linkClicks: range, signups: range,
+});
+
+export const StrategistOutput = z.object({
+  actions: z.array(z.object({
+    kind: z.enum(["post", "reply", "dm_reply"]),
+    archetype: z.enum(["education", "story", "meme", "product"]).optional(),
+    timeSlot: z.enum(["morning", "midday", "evening"]).optional(),
+    topic: z.string(),
+    angle: z.string(),
+    threadId: z.string().optional(),
+    replyToEngagementId: z.string().optional(),
+    reasoning: z.string(),
+    evidenceRuleIds: z.array(z.string()),
+    banditArmId: z.string().optional(),
+    predictedEffect: PredictedEffectSchema,
+    riskClass: z.enum(["normal", "sensitive"]),
+  })).min(1).max(3),
+  strategyNote: z.string(),
+});
+export type StrategistOutputT = z.infer<typeof StrategistOutput>;
+
+export const CopywriterOutput = z.object({
+  caption: z.string().min(10),
+  hashtags: z.array(z.string()).max(8),
+  creativeBrief: z.string(),
+  altText: z.string(),
+});
+export type CopywriterOutputT = z.infer<typeof CopywriterOutput>;
+
+export const CriticOutput = z.object({
+  verdict: z.enum(["pass", "revise", "block"]),
+  issues: z.array(z.object({
+    severity: z.enum(["low", "medium", "high"]),
+    kind: z.enum(["brand_safety", "spam_risk", "guardrail", "platform_norm", "quality"]),
+    note: z.string(),
+  })),
+  revisedCaption: z.string().optional(),
+});
+export type CriticOutputT = z.infer<typeof CriticOutput>;
+
+export const AnalystOutput = z.object({
+  verdict: z.enum(["exceeded", "met", "missed"]),
+  attribution: z.array(z.object({
+    factor: z.string(),           // e.g. "timing", "archetype", "topic", "caption style"
+    direction: z.enum(["helped", "hurt"]),
+    confidence: z.number().min(0).max(1),
+  })),
+  summary: z.string(),
+  suggestedLessons: z.array(z.object({
+    category: z.enum(["voice", "content", "timing", "audience", "guardrail"]),
+    text: z.string(),
+    confidence: z.number().min(0).max(1),
+  })),
+});
+export type AnalystOutputT = z.infer<typeof AnalystOutput>;
+
+export const CoachOutput = z.object({
+  playbookChanges: z.object({
+    add: z.array(z.object({
+      category: z.enum(["voice", "content", "timing", "audience", "guardrail"]),
+      text: z.string(),
+      evidenceRefs: z.array(z.string()),
+      sourceType: z.enum(["outcome", "rejection", "edit"]),
+    })),
+    amend: z.array(z.object({ ruleKey: z.string(), text: z.string() })),
+    retire: z.array(z.string()),
+  }),
+  changeSummary: z.string(),
+});
+export type CoachOutputT = z.infer<typeof CoachOutput>;
+
+export const CommunityOutput = z.object({
+  replyText: z.string(),
+  qualification: z.enum(["continue", "meeting_booked", "disqualified"]),
+  rationale: z.string(),
+});
+export type CommunityOutputT = z.infer<typeof CommunityOutput>;
+
+export const PersonaVoiceOutput = z.object({
+  commentText: z.string().max(220),
+});
+export type PersonaVoiceOutputT = z.infer<typeof PersonaVoiceOutput>;
+```
+
+- [ ] **Step 2: Write `src/lib/agents/models.ts`** — registry, mock mode, retry/quarantine:
+
+```ts
+import { generateObject } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
+import { openai } from "@ai-sdk/openai";
+import type { z } from "zod";
+import { subRng, pick } from "@/lib/rng";
+import {
+  StrategistOutput, CopywriterOutput, CriticOutput, AnalystOutput, CoachOutput,
+  CommunityOutput, PersonaVoiceOutput,
+} from "@/lib/contracts";
+
+export type AgentRole = "strategist" | "copywriter" | "critic" | "analyst" | "coach" | "community" | "persona";
+
+// Cross-family assignment is intentional: evaluators (critic/analyst) are a different
+// model family than the actors they judge (self-preference bias mitigation — see README).
+function modelFor(role: AgentRole) {
+  const actor = process.env.MODEL_ACTOR ?? "claude-sonnet-4-5";
+  const judge = process.env.MODEL_JUDGE ?? "gpt-5";
+  const cheap = process.env.MODEL_CHEAP ?? "gpt-5-mini";
+  switch (role) {
+    case "strategist":
+    case "copywriter":
+    case "coach": return anthropic(actor);
+    case "critic":
+    case "analyst": return openai(judge);
+    case "community":
+    case "persona": return openai(cheap);
+  }
+}
+
+type CallResult<T> = { ok: true; data: T } | { ok: false; error: string };
+
+export async function callAgent<T>(
+  role: AgentRole, schema: z.ZodType<T>, system: string, user: string,
+  opts: { worldSeed: string; refId: string },
+): Promise<CallResult<T>> {
+  if ((process.env.MODEL_MODE ?? "mock") === "mock") {
+    return { ok: true, data: mockFor(role, opts) as T };
+  }
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const { object } = await generateObject({ model: modelFor(role), schema, system, prompt: user });
+      return { ok: true, data: object };
+    } catch (err) {
+      if (attempt === 1) return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+  return { ok: false, error: "unreachable" };
+}
+
+/** Seeded, schema-valid canned outputs so the full loop runs offline. */
+function mockFor(role: AgentRole, opts: { worldSeed: string; refId: string }): unknown {
+  const rng = subRng(opts.worldSeed, "mock", role, opts.refId);
+  const archetype = pick(rng, ["education", "story", "meme", "product"] as const);
+  const timeSlot = pick(rng, ["morning", "midday", "evening"] as const);
+  switch (role) {
+    case "strategist": return StrategistOutput.parse({
+      actions: [{
+        kind: "post", archetype, timeSlot, topic: "brewing-science",
+        angle: `A ${archetype} angle on brewing science`,
+        reasoning: `Mock: bandit favors ${archetype}/${timeSlot}; playbook timing-1 suggests mornings.`,
+        evidenceRuleIds: ["timing-1"],
+        predictedEffect: { impressions: [15, 30], likes: [3, 8], linkClicks: [1, 3], signups: [0, 1] },
+        riskClass: "normal",
+      }],
+      strategyNote: "Mock strategy: explore education content.",
+    });
+    case "copywriter": return CopywriterOutput.parse({
+      caption: `Mock caption ${opts.refId.slice(0, 6)}: water temperature changes everything about extraction.`,
+      hashtags: ["#coldbrew", "#coffeescience"], creativeBrief: "Split-frame brew diagram", altText: "Brew diagram",
+    });
+    case "critic": return CriticOutput.parse({ verdict: "pass", issues: [] });
+    case "analyst": return AnalystOutput.parse({
+      verdict: pick(rng, ["exceeded", "met", "missed"] as const),
+      attribution: [{ factor: "timing", direction: "helped", confidence: 0.7 }],
+      summary: "Mock analysis: morning slot outperformed prediction.",
+      suggestedLessons: [{ category: "timing", text: "Morning education posts outperform.", confidence: 0.7 }],
+    });
+    case "coach": return CoachOutput.parse({
+      playbookChanges: {
+        add: [{ category: "timing", text: `Mock learned rule ${opts.refId.slice(0, 6)}: prefer morning education posts.`, evidenceRefs: [opts.refId], sourceType: "outcome" }],
+        amend: [], retire: [],
+      },
+      changeSummary: "Mock: +1 timing rule from outcomes",
+    });
+    case "community": return CommunityOutput.parse({
+      replyText: "Happy to walk you through it — want a quick 15-min call?",
+      qualification: rng() < 0.4 ? "meeting_booked" : "continue",
+      rationale: "Mock qualification.",
+    });
+    case "persona": return PersonaVoiceOutput.parse({
+      commentText: pick(rng, ["This is the content I follow for.", "Okay this is actually useful.", "Trying this tomorrow morning."]),
+    });
+  }
+}
+```
+
+- [ ] **Step 3: Write `src/lib/agents/prompts.ts`** — real prompt text (used in live mode):
+
+```ts
+import type { PlaybookRuleRow } from "@/lib/db/queries"; // re-exported row type
+// If queries.ts isn't ready yet, inline: type PlaybookRuleRow = { ruleKey: string; category: string; text: string };
+
+export const SYSTEM = {
+  strategist: `You are the Strategist for a brand's Pictogram (Instagram-like) account.
+Choose the next best action(s) to grow the brand toward booked meetings, not vanity metrics.
+You MUST ground every action in: (1) cited playbook rules by ruleKey, (2) the bandit arm stats provided,
+(3) observed signals (comments, DMs, funnel events). Predict effect ranges honestly — you are scored on calibration.
+Mark riskClass "sensitive" for first-touch DMs and anything involving pricing/discounts.`,
+  copywriter: `You write Pictogram captions for the brand. Follow every "voice" playbook rule exactly.
+Return caption, up to 8 hashtags, a one-line creative brief for the image, and alt text.`,
+  critic: `You are an independent red-team reviewer from a different model family than the writer.
+Judge the drafted action for: brand safety, spam/cringe risk, guardrail violations, platform norms, quality.
+Verdict "revise" must include revisedCaption. Be strict; you exist to catch what the writer cannot see.`,
+  analyst: `You are an independent evaluator from a different model family than the strategist.
+Compare actual outcomes to the strategist's predicted ranges. Attribute results to factors
+(timing, archetype, topic, caption style) with confidence. Suggest concrete, testable lessons.`,
+  coach: `You maintain the brand's playbook. Digest analyst reports and human decisions
+(approvals, rejections with reasons, edits with diffs) into playbook changes.
+Rules must be specific and actionable ("Post education content 7-9am", not "post better content").
+Amend or retire rules contradicted by evidence. Reference evidence refs.`,
+  community: `You handle Pictogram DMs for the brand. Answer helpfully in <=3 sentences.
+Within 3 turns total, decide: meeting_booked (persona agreed to a call/demo) or disqualified (no fit).
+Never pressure; disqualify politely when there is no fit.`,
+  persona: `You are a specific Pictogram user (persona details provided). Write ONE short in-character comment
+reacting to the post. React consistently with your interests and skepticism level.`,
+} as const;
+
+export function formatRules(rules: { ruleKey: string; category: string; text: string }[]): string {
+  return rules.map((r) => `[${r.ruleKey}] (${r.category}) ${r.text}`).join("\n");
+}
+```
+
+- [ ] **Step 4: Write `scripts/smoke-models.ts`**
+
+```ts
+import { generateText, experimental_generateImage as generateImage } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
+import { openai } from "@ai-sdk/openai";
+
+async function main() {
+  const checks: [string, () => Promise<unknown>][] = [
+    ["anthropic actor", () => generateText({ model: anthropic(process.env.MODEL_ACTOR ?? "claude-sonnet-4-5"), prompt: "Say OK" })],
+    ["openai judge", () => generateText({ model: openai(process.env.MODEL_JUDGE ?? "gpt-5"), prompt: "Say OK" })],
+    ["openai cheap", () => generateText({ model: openai(process.env.MODEL_CHEAP ?? "gpt-5-mini"), prompt: "Say OK" })],
+    ["image model", () => generateImage({ model: openai.image(process.env.MODEL_IMAGE ?? "gpt-image-1"), prompt: "A cup of coffee, flat vector", size: "1024x1024" })],
+  ];
+  let failed = 0;
+  for (const [name, fn] of checks) {
+    try { await fn(); console.log(`PASS ${name}`); }
+    catch (e) { failed++; console.error(`FAIL ${name}: ${e instanceof Error ? e.message : e}`); }
+  }
+  if (failed > 0) {
+    console.error(`\n${failed} provider check(s) failed. Fix keys/models in .env.local before live mode.`);
+    console.error("Fallback: set both MODEL_ACTOR family checks to the working provider and document the caveat in README.");
+    process.exit(1);
+  }
+  console.log("\nAll providers OK. Live mode is safe.");
+}
+main();
+```
+
+- [ ] **Step 5: Verify**
+
+Run: `npm run typecheck && npm test` — Expected: PASS (contracts compile; mock generators satisfy schemas via `.parse`).
+Run (with real keys in `.env.local`): `npm run smoke` — Expected: 4 × PASS lines. If any FAIL: fix keys now, not on demo day.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add -A && git commit -m "feat: agent contracts, cross-family model registry with mock mode, provider smoke script"
+```
+
+## Task 5: Orchestrator — heartbeat, approval gate, publisher, tick integration (TDD)
+
+**Files:**
+- Create: `src/lib/agents/orchestrator.ts`, `src/lib/agents/analystRunner.ts`, `src/lib/agents/coachRunner.ts`, `src/lib/sim/clock.ts`, `src/lib/sim/funnel.ts`
+- Test: `tests/loop.test.ts`
+
+**Interfaces:**
+- Consumes: everything from Tasks 1–4
+- Produces (server actions + UI consume):
+  - `runHeartbeat(worldId: string): Promise<{ proposalIds: string[] }>`
+  - `decideProposal(proposalId: string, decision: "approve" | "reject" | "edit", opts?: { reason?: string; editedPayload?: PostPayload }): Promise<void>`
+  - `advanceTicks(worldId: string, n: number): Promise<{ tick: number }>` (in clock.ts; runs waves, funnel, day-boundary analyst+coach, morning heartbeat)
+
+**Behavior spec (implement exactly):**
+1. `runHeartbeat`: skip if paused. Build context: active playbook rules (formatted), bandit arm stats, last 24-tick analytics summary, unanswered comments, open DM threads. Call strategist → for each action (≤3): `checkGuardrails` — blocked ⇒ activity-log entry `status: "blocked"`, skip. For `post` kind: copywriter drafts (mock/live) → critic reviews (`block` ⇒ log + skip; `revise` ⇒ use `revisedCaption`). Insert proposal: `pending` if `requiresApproval`, else `auto_approved` → publish immediately. Every step appends to `activity_log`. Agent-call failure after retry ⇒ proposal row with `status: "quarantined"`, error in `detail`.
+2. `decideProposal`: `approve`/`edit` ⇒ status `approved`/`edited_approved` (store `humanEditDiff` = `{ before, after }` payload objects), then publish: insert `posts` row scheduled at the action's `timeSlot` next occurrence (compute from current tick + `TIME_SLOTS`). `reject` ⇒ status `rejected`, store `humanReason`. All decisions logged.
+3. `advanceTicks(worldId, n)`, per tick t: (a) publish due scheduled posts (`status: "published"`, `publishedTick: t`); (b) `runEngagementWave` for brand posts with `publishedTick` in `[t-24, t]` — engine is idempotent per (post, persona): callers pass tick, wave runs only at `publishedTick` and `publishedTick + 6` (two waves); (c) `runFunnel(worldId, t)` — for each `profile_visit` engagement at t: seeded rolls vs `purchaseIntent` ⇒ `link_click` (p = 0.6·intent), then `signup` (p = 0.3·intent), then DM initiation (p = 0.4·dmOpenness·intent) creating `dm_threads` + persona `dm_messages` (persona voice via `callAgent("persona", ...)`) + `funnel_events`; (d) fill pending `[pending persona voice]` comment texts via persona calls (batch); (e) at day boundary (`t % 24 === 0`): `analystRunner` on posts whose 24-tick window closed ⇒ `outcome_reports` + `recordReward(computeReward(...))`; then `coachRunner` digesting new reports + decided proposals since last version ⇒ `createPlaybookVersion` (skip if no changes); (f) at morning tick (`t % 24 === 7`): `runHeartbeat`. Update `worlds.simTick = t` each tick.
+4. Open DM threads with `turnCount < 3` and an unanswered persona message: community agent drafts reply ⇒ proposal (`dm_reply`, sensitive on first agent turn ⇒ always gated; subsequent turns auto in autopilot). `meeting_booked`/`disqualified` ⇒ thread status + `funnel_events` row.
+
+- [ ] **Step 1: Write the failing walking-skeleton test** — `tests/loop.test.ts`:
+
+```ts
+import { describe, it, expect } from "vitest";
+import { buildTinyWorld } from "./fixtures/world";
+import { db } from "@/lib/db/client";
+import { proposals, posts, engagements, outcomeReports, playbookVersions, activityLog } from "@/lib/db/schema";
+import { runHeartbeat, decideProposal } from "@/lib/agents/orchestrator";
+import { advanceTicks } from "@/lib/sim/clock";
+import { eq, and, desc } from "drizzle-orm";
+
+describe("walking skeleton: full loop in mock mode", () => {
+  it("heartbeat → proposal → approve → publish → outcomes → analyst → coach → new playbook version", async () => {
+    const { worldId } = buildTinyWorld("loop-seed");
+
+    // heartbeat at tick 0 (setup call; normally fired by clock at tick 7)
+    const { proposalIds } = await runHeartbeat(worldId);
+    expect(proposalIds.length).toBeGreaterThanOrEqual(1);
+    const pending = db.select().from(proposals).where(eq(proposals.worldId, worldId)).all();
+    expect(pending[0].status).toBe("pending"); // propose mode default
+    expect(pending[0].reasoning.length).toBeGreaterThan(0);
+
+    // human approves
+    await decideProposal(pending[0].id, "approve");
+    const published = db.select().from(posts)
+      .where(and(eq(posts.worldId, worldId), eq(posts.authorType, "brand"))).all();
+    expect(published.length).toBe(1);
+
+    // run two sim days
+    await advanceTicks(worldId, 48);
+
+    expect(db.select().from(engagements).where(eq(engagements.worldId, worldId)).all().length).toBeGreaterThan(0);
+    expect(db.select().from(outcomeReports).where(eq(outcomeReports.worldId, worldId)).all().length).toBeGreaterThanOrEqual(1);
+
+    const versions = db.select().from(playbookVersions)
+      .where(eq(playbookVersions.worldId, worldId)).orderBy(desc(playbookVersions.version)).all();
+    expect(versions[0].version).toBeGreaterThanOrEqual(2); // coach created a version
+
+    // activity trail captured the chain
+    const log = db.select().from(activityLog).where(eq(activityLog.worldId, worldId)).all();
+    for (const actor of ["strategist", "human", "publisher", "analyst", "coach"]) {
+      expect(log.some((l) => l.actor === actor), `missing actor ${actor}`).toBe(true);
+    }
+  });
+
+  it("rejection with reason lands in the coach's next digest", async () => {
+    const { worldId } = buildTinyWorld("loop-seed-2");
+    const { proposalIds } = await runHeartbeat(worldId);
+    await decideProposal(proposalIds[0], "reject", { reason: "Too salesy; we never lead with product pushes." });
+    await advanceTicks(worldId, 24);
+    const v = db.select().from(playbookVersions).where(eq(playbookVersions.worldId, worldId)).orderBy(desc(playbookVersions.version)).all();
+    expect(v[0].version).toBeGreaterThanOrEqual(2); // coach ran on the rejection even with no outcomes
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify failure** — `npm test` — Expected: FAIL, modules missing.
+
+- [ ] **Step 3: Implement** `orchestrator.ts`, `analystRunner.ts`, `coachRunner.ts`, `clock.ts`, `funnel.ts` exactly per the behavior spec above. Key structure for `orchestrator.ts` (fill in the marked sections with the spec logic — every DB write mirrors the tables from Task 1, every agent call goes through `callAgent`):
+
+```ts
+// orchestrator.ts — shape (implement fully per behavior spec)
+export async function runHeartbeat(worldId: string): Promise<{ proposalIds: string[] }> {
+  // 1. load world + settings; return early if paused (log "skipped: paused")
+  // 2. context = { rules: formatRules(getActiveRules(worldId)), armStats, analytics24t, openComments, openDms }
+  // 3. strat = await callAgent("strategist", StrategistOutput, SYSTEM.strategist, renderContext(context), {...})
+  //    !strat.ok → insert quarantined proposal + log; return { proposalIds: [] }
+  // 4. for each action: guardrails → copywriter → critic → insert proposal (pending | auto_approved)
+  //    auto_approved → publishProposal(...) immediately
+  // 5. log every step to activity_log; return created proposal ids
+}
+export async function decideProposal(/* per spec */) {}
+function publishProposal(/* insert posts row at next TIME_SLOTS occurrence; log publisher entry */) {}
+```
+
+- [ ] **Step 4: Run tests until green** — `npm test` — Expected: ALL suites PASS. This test going green **is** the walking skeleton working.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add -A && git commit -m "feat: orchestrator heartbeat + approval gate + clock integration; walking-skeleton loop test green"
+```
+
+## Task 6: Server actions + minimal 3-view UI
+
+**Files:**
+- Create: `src/app/actions.ts`, `src/lib/db/queries.ts`, `src/app/feed/page.tsx`, `src/app/approvals/page.tsx`, `src/app/activity/page.tsx`; modify `src/app/page.tsx`, `src/app/layout.tsx`
+
+**Interfaces:**
+- Consumes: `runHeartbeat`, `decideProposal`, `advanceTicks`, tables
+- Produces: `src/lib/db/queries.ts` — the read-side contract Track C builds on: `getWorld`, `getFeed(worldId)`, `getPendingProposals(worldId)`, `getActivity(worldId, limit)`, each returning plain serializable objects
+
+**Spec (acceptance checks, not pixel specs — Track C polishes later):**
+- `src/app/actions.ts`: `"use server"` wrappers: `advanceTicksAction(worldId, n)`, `heartbeatAction(worldId)`, `decideAction(proposalId, decision, reason?, editedCaption?)`, `togglePauseAction(worldId)`, `setModeAction(worldId, mode)`. Each calls `revalidatePath("/")`-family so pages refresh.
+- Layout: left nav (Feed / Approvals / Activity), top bar showing world name, sim clock (`Day D, HH:00`), mode badge (Propose/Autopilot), pause switch, and buttons: `+1h`, `+6h`, `+1 day` (call `advanceTicksAction`).
+- Feed page: brand + ambient posts newest-first as cards (caption, archetype badge, hashtags, image placeholder block using `creativeBrief` text), like/comment counts, comments expandable.
+- Approvals page: pending proposal cards — kind, payload summary, reasoning, evidence rule IDs as chips, predicted-effect ranges, risk badge; buttons Approve / Reject (dialog capturing reason — required) / Edit (textarea prefilled with caption; submit = `edit` decision with `editedPayload`).
+- Activity page: reverse-chron table of `activity_log` (tick, actor, action, status, summary).
+- [ ] **Step 1:** Implement `queries.ts` + `actions.ts`.
+- [ ] **Step 2:** Implement the three pages + layout with shadcn components. No new business logic in components — server components read via `queries.ts`, mutate via `actions.ts` only.
+- [ ] **Step 3: Manual verification loop** (this is UI; scripted checks come from `loop.test.ts` already):
+
+Run: `npm run db:push && npm run db:seed && npm run dev`
+Expected walkthrough: open :3000 → Feed empty → click heartbeat (add a dev-only "Run heartbeat" button in top bar) → Approvals shows 1+ card with reasoning + rule chips → Approve → `+1 day` → Feed shows post with engagement counts and persona comments → Activity shows strategist/critic/human/publisher/analyst/coach rows → second heartbeat's proposal differs (cites new rule from coach).
+
+- [ ] **Step 4:** `npm run verify` — Expected: PASS.
+- [ ] **Step 5: Commit**
+
+```bash
+git add -A && git commit -m "feat: mission control MVP — feed, approvals, activity + sim clock controls"
+```
+
+## Task 7: Docs + first push
+
+**Files:**
+- Create: `README.md`, `CONTRIBUTING.md`, `docs/ARCHITECTURE.md`, `docs/HANDOFF.md`, `docs/PROGRESS.md`, `docs/DECISIONS.md`, `docs/TESTING.md`, `docs/DEMO.md`, `docs/superpowers/specs/2026-08-14-flywheel-design.md`, `docs/superpowers/plans/2026-08-14-flywheel.md` (this file)
+
+**Required content per doc (write fully, no stubs):**
+- `README.md`: pitch (2 paragraphs); quickstart (`cp .env.example .env.local` → fill keys → `npm i && npm run db:push && npm run db:seed && npm run dev`; `MODEL_MODE=mock` works with no keys); architecture diagram (mermaid: the reason→action→evaluation→improvement loop from the spec); model table (role → family → why, incl. the self-preference-bias citation for cross-family judging: Panickssery et al. 2024, arXiv 2410.21819); permissions & guardrails summary; "how feedback changes behavior" walkthrough (rejection → rule → changed next proposal); bounty judging map.
+- `docs/ARCHITECTURE.md`: file-structure map (from this plan); track ownership table (A: `src/lib/sim`; B: `src/lib/agents` + `src/lib/learning` + `contracts.ts`; C: `src/app` + `queries.ts`); the additive-only rule for shared files; interface contracts (signatures from Tasks 2–6); data-flow description of one full tick.
+- `docs/HANDOFF.md`: current state ("walking skeleton complete: X tests green, loop demo-able in mock mode"); how to run + verify; env setup incl. `npm run smoke`; per-track next task pointers into this plan (A→Task A1, B→Task B1, C→Task C1); gotchas (mock vs live, WAL file in gitignore, request-driven time only).
+- `docs/PROGRESS.md`: table per track: done / in-flight / blocked / next; seeded with Phase 0 rows. Update every working session.
+- `docs/DECISIONS.md`: ADR-lite entries (numbered, append-only, context→decision→consequence), seeded with: D1 organic-social loop choice; D2 full-funnel outcomes; D3 simulated platform w/ hidden ground truth; D4 Instagram-like single platform; D5 hybrid engagement engine; D6 playbook+bandits learning; D7 cross-family model assignment; D8 request-driven sim time; D9 mock-mode-first development; D10 arm space ≤12; D11 DM 3-turn cap; D12 quarantine-not-crash; D13 additive-only shared files; D14 sensitive-always-gated; D15 full-copy playbook versioning; D16 `drizzle-kit push`, no migrations.
+- `docs/TESTING.md`: verification workflow (`npm run verify` before every merge); what must be TDD (pure logic in `sim/engine`, `learning/*`); mock-mode rules (tests never hit network); how to write a determinism test (copy `engine.test.ts` pattern); fixture usage.
+- `CONTRIBUTING.md`: trunk-based, branches `<initials>/<task-id>-<slug>`, small PRs mapped to plan tasks, `npm run verify` green before merge, shared-file changes announced in PROGRESS.md, definition of done (code + test + docs row updated).
+- `docs/DEMO.md`: the demo script scene-by-scene with target timings (total 3–5 min): 0:00 genesis (or pre-seeded world tour) → 0:45 heartbeat + proposal anatomy → 1:30 approve one/reject one with reason → 2:15 fast-forward, outcomes land → 2:45 playbook diff + bandit shift + changed next proposal → 3:30 DM → meeting booked → 4:00 reveal hidden ground-truth config vs learned rules → 4:30 autonomy dial + kill switch + rollback.
+
+- [ ] **Step 1:** Write all docs. Copy the approved design spec into `docs/superpowers/specs/2026-08-14-flywheel-design.md` and this plan into `docs/superpowers/plans/2026-08-14-flywheel.md`.
+- [ ] **Step 2:** `npm run verify` — Expected: PASS.
+- [ ] **Step 3: Commit and hand off**
+
+```bash
+git add -A && git commit -m "docs: collaboration scaffolding — architecture, handoff, progress, decisions, testing, demo"
+```
+
+User pushes to the team remote (`git remote add origin <url> && git push -u origin master`). **Phase 0 complete — teammates start their tracks.**
+
+---
+
+# TRACK A — Simulator depth (owner: teammate A; files: `src/lib/sim/`)
+
+### Task A1: World genesis pipeline
+**Files:** create `src/lib/sim/genesis.ts`, `tests/genesis.test.ts` (mock mode); modify `src/lib/contracts.ts` (add `GenesisOutput` — announce in PROGRESS.md).
+**Interfaces:** Produces `generateWorld(productDescription: string, seed: string): Promise<{ worldId: string }>` — consumed by onboarding UI (C4).
+**Spec:** `GenesisOutput` zod: `{ brandName, segments: [{ name, size(4..40), affinity: Record<Archetype, number>, interests: string[] }], topics: string[], ambientAccounts: [{ handle, bio, postingStyle }], seedRules: [{ category, text }] }`. One `callAgent("strategist" family is fine — add role "genesis" mapped to MODEL_ACTOR)` call in live mode; mock returns the tiny-world config grown to ~100 personas. Persona hidden stats drawn from per-segment distributions via `subRng`. Insert world + personas + settings + playbook v1 + 12 arms (reuse fixture logic — extract shared builder `src/lib/sim/build.ts` from `tests/fixtures/world.ts`, fixture then delegates to it).
+**Steps:** failing test (100-persona world from mock genesis; deterministic for same seed; segments respected) → implement → green → commit `feat(sim): world genesis pipeline`.
+
+### Task A2: Funnel + DM simulation depth
+**Files:** modify `src/lib/sim/funnel.ts`, create `src/lib/sim/dm.ts`, `tests/funnel.test.ts`.
+**Spec:** landing page conversion honesty: `signup` only after `link_click`; DM initiation caps per persona (max 1 open thread); persona DM opener text via persona role; qualification path emits `meeting_booked | disqualified` within 3 turns (enforced in schema `turnCount`); funnel events all carry `sourcePostId` for attribution.
+**Tests:** deterministic funnel counts for fixed seed; no signup without click; thread turn cap enforced.
+
+### Task A3: Hidden algorithm dynamics + ambient content
+**Files:** create `src/lib/sim/ambient.ts`; modify `engine.ts` (velocity boost application), `clock.ts` (ambient posting).
+**Spec:** early-velocity boost: if post's first-wave engagement rate > world median, second wave reach ×`earlyVelocityBoost`; over-posting penalty already in engine — add follower churn: posting >4 brand posts/day ⇒ each follower unfollows w.p. 0.05 (seeded). Ambient accounts post 2–4×/day from `postingStyle` templates (no LLM in mock; cheap LLM in live prewarm only).
+**Tests:** velocity boost measurable (same post, low vs high first wave); churn triggers past cap.
+
+### Task A4: Realism tuning + golden run
+**Files:** create `tests/golden.test.ts`, `tests/fixtures/golden.json`.
+**Spec:** one scripted 5-sim-day mock run; snapshot funnel totals to `golden.json`; test asserts totals match exactly (catches accidental engine drift from any track). Regenerate intentionally via `UPDATE_GOLDEN=1 npm test`.
+
+# TRACK B — Agents & learning depth (owner: teammate B; files: `src/lib/agents/`, `src/lib/learning/`)
+
+### Task B1: Bandit lifecycle completeness
+**Files:** modify `src/lib/agents/orchestrator.ts`, `src/lib/learning/bandit.ts`; create `tests/bandit-lifecycle.test.ts`.
+**Spec:** strategist receives arm stats (`mean = α/(α+β)`, n, and a fresh Thompson sample) in context and must set `banditArmId` on post actions; posts store arm id (add nullable `banditArmId` column to `posts` — additive, announce); analyst runner calls `recordReward` exactly once per post window; `getArmDistributions(worldId)` query for C2 (returns α/β + last-20 sampled thetas for violin rendering).
+
+### Task B2: Calibration tracking
+**Files:** create `src/lib/learning/calibration.ts`, `tests/calibration.test.ts`.
+**Spec:** `calibrationSeries(worldId): { tick, metric, predictedMid, actual, withinRange }[]` from `outcome_reports`; rolling hit-rate (fraction of actuals inside predicted ranges, window 10). Strategist context includes current hit-rate with instruction "your ranges are currently over/under-confident".
+
+### Task B3: Edit-distillation
+**Files:** modify `src/lib/agents/coachRunner.ts`; create `tests/edit-distillation.test.ts`.
+**Spec:** coach digest includes, for each `edited_approved` proposal, a unified word-diff of `humanEditDiff.before.caption` vs `after.caption` (implement `wordDiff(a, b)` in `coachRunner.ts`). Mock coach maps edits → one `sourceType: "edit"` rule. Test: edit removing hashtags yields a hashtag rule in next version.
+
+### Task B4: Autopilot + budget enforcement + kill switch
+**Files:** modify `orchestrator.ts`, `guardrails.ts`; create `tests/autopilot.test.ts`.
+**Spec:** autopilot honors all caps via the single `checkGuardrails` gate (never bypassed); sensitive still pending; `paused` blocks heartbeat AND publishing; expire pending proposals older than 48 ticks (`status: "expired"`, logged). Image budget decremented by art director (C5) through a `spendImageBudget(worldId)` guard here.
+
+### Task B5: Rollback surfacing + quarantine UX data
+**Files:** modify `queries.ts` (additive): `getPlaybookHistory(worldId)` (versions + diffs), `getQuarantined(worldId)`; wire `rollbackTo` into a server action with activity-log entry `actor: "human", action: "rollback"`.
+
+# TRACK C — Mission Control UX (owner: teammate C; files: `src/app/`, `src/lib/db/queries.ts`)
+
+### Task C1: Pictogram phone-frame feed
+Polish feed into a centered phone frame: story-style header, post cards with double-tap like animation, comment drawer, follower count ticker. Engagement counts animate when `advanceTicks` returns. Placeholder art: gradient cards rendering `creativeBrief` text + archetype icon.
+
+### Task C2: Brain view (`/brain`)
+Three tabs: **Playbook** — active rules grouped by category, evidence popovers, version timeline with diff view (added=green/amended=amber/retired=red), edit-rule + rollback buttons (B5 actions). **Bandits** — 12-arm grid, each showing Beta mean, n, and mini distribution strip (from `getArmDistributions`), current-champion highlight. **Calibration** — line chart of rolling hit-rate + scatter predicted-vs-actual (B2 series). Recharts (`npm i recharts`).
+
+### Task C3: Funnel analytics (`/analytics`)
+Funnel bars (impressions → likes → clicks → signups → DMs → meetings) filterable by archetype/time-slot; per-playbook-version comparison ("v1 era vs v3 era" side-by-side); attribution table per post.
+
+### Task C4: Genesis onboarding (`/onboarding`)
+Product-description textarea → streaming progress ("Deriving segments… Growing 100 personas… Writing seed hypotheses…") → world summary cards → "Enter Mission Control". Calls A1's `generateWorld`. World switcher on `/`.
+
+### Task C5: Hero images + demo prewarm
+`src/lib/agents/artdirector.ts`: `generateHeroImage(postId)` via image model, gated by `spendImageBudget` (B4); "Generate hero image" button on demo-path posts; images stored in `public/generated/`. `scripts/prewarm-demo.ts`: seeded demo world, live-mode run through the DEMO.md path, pre-generating images + caching a snapshot DB committed as `demo-snapshot.db` for offline demo fallback.
+
+# FINAL (all hands)
+
+### Task F1: README completion + architecture diagram polish (owner: whoever is freest; review: all)
+### Task F2: Demo rehearsal — run `docs/DEMO.md` end-to-end twice from `demo-snapshot.db`; fix stumbles; record 3–5 min video
+### Task F3: Submission checklist — bounty deliverables cross-check (prototype ✓, demo video ✓, README with architecture/models/permissions/guardrails/feedback-mechanics ✓)
+
+---
+
+## Self-review notes
+
+- Spec coverage: GTM loop (Tasks 2/5/A2), permission+autonomy (Tasks 3/5/B4), self-improving loop (Tasks 3/5/B1–B3), trust/explainability (Tasks 5/6/C2, README), configurable onboarding (A1/C4), hero images (C5), all bounty bonuses mapped (heartbeat 5, experiment selection 3/B1, editable memory+rollback 3/B5/C2, caps 3/B4).
+- Type consistency: `PredictedEffect` defined once in `types.ts`, zod mirror in `contracts.ts`; `PostPayload` used by orchestrator + `decideProposal` + UI edit flow; `checkGuardrails` signature identical in Tasks 3/5/B4.
+- Known intentional gap: Task 5's orchestrator code is a structured shape + exact behavior spec rather than full inline code (it is pure glue over fully-specified interfaces); every algorithmic component it calls is complete code with tests.
