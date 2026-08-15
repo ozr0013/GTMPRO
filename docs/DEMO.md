@@ -89,7 +89,7 @@ pending proposal  : none here — EXPECTED once autonomy is earned
                     (scenes 0:45–1:30 run on the fresh world created on camera)
 meeting booked    : YES   (the funnel reaches the money metric)
 reveal Content archetype: MATCH
-rules with measured track record: 4/4
+rules with measured track record: 8/8
 earned autonomy   : YES
 ```
 
