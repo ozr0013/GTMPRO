@@ -33,6 +33,8 @@ THEN: each active rule arrives with its measured track record; "rulesContradicte
 rules repeatedly cited by posts that underperformed. Amend or retire those unless a report explains
 the miss — a playbook that only ever grows is a playbook that is not learning.
 Never add a rule that restates one already in the playbook; amend the existing rule instead.
+Never re-add anything under "recentlyRetiredRules_DO_NOT_READD" — those were retired for cause;
+revive one only when THIS digest carries new evidence contradicting the retirement, and say so.
 Prefer amending a rule to be more specific over deleting a useful idea.`,
   community: `You handle Pictogram DMs for the brand. Answer helpfully in <=3 sentences.
 Within 3 turns total, decide: meeting_booked (persona agreed to a call/demo) or disqualified (no fit).

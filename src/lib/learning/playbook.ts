@@ -176,6 +176,56 @@ export function rollbackTo(worldId: string, targetVersion: number, tick: number)
   return { versionId: res.versionId };
 }
 
+export interface RetiredRule {
+  ruleKey: string;
+  category: string;
+  text: string;
+  retiredInVersion: number;
+}
+
+/**
+ * Failure memory: rules retired in the last `lookback` versions. The dedupe
+ * guard only compares against ACTIVE rules, so without this a retired rule can
+ * be re-derived from the same reports and quietly come back next cycle.
+ */
+export function getRecentlyRetiredRules(worldId: string, lookback = 3): RetiredRule[] {
+  const versions = db
+    .select()
+    .from(playbookVersions)
+    .where(eq(playbookVersions.worldId, worldId))
+    .orderBy(desc(playbookVersions.version))
+    .all()
+    .slice(0, lookback + 1); // need each version's parent to diff against
+
+  const activeRules = getActiveRules(worldId);
+  const activeKeys = new Set(activeRules.map((r) => r.ruleKey));
+  // a revival re-adds the TEXT under a fresh ruleKey, so text presence — not key
+  // presence — is what clears an entry from failure memory
+  const activeTexts = new Set(activeRules.map((r) => r.text));
+  const retired: RetiredRule[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < versions.length - 1; i++) {
+    const current = new Set(rulesOf(worldId, versions[i].id).map((r) => r.ruleKey));
+    for (const rule of rulesOf(worldId, versions[i + 1].id)) {
+      if (
+        current.has(rule.ruleKey) ||
+        activeKeys.has(rule.ruleKey) ||
+        activeTexts.has(rule.text) ||
+        seen.has(rule.ruleKey)
+      )
+        continue;
+      seen.add(rule.ruleKey);
+      retired.push({
+        ruleKey: rule.ruleKey,
+        category: rule.category,
+        text: rule.text,
+        retiredInVersion: versions[i].version,
+      });
+    }
+  }
+  return retired;
+}
+
 /** Versions with diffs vs parent — Track C Brain view wraps this; we don't own queries.ts. */
 export function getPlaybookHistory(worldId: string) {
   const versions = db

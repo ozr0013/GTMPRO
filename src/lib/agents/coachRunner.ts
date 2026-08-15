@@ -5,7 +5,12 @@ import { callAgent } from "@/lib/agents/models";
 import { SYSTEM } from "@/lib/agents/prompts";
 import { logActivity } from "@/lib/agents/log";
 import { CoachOutput } from "@/lib/contracts";
-import { createPlaybookVersion, getActiveRules, type PlaybookChanges } from "@/lib/learning/playbook";
+import {
+  createPlaybookVersion,
+  getActiveRules,
+  getRecentlyRetiredRules,
+  type PlaybookChanges,
+} from "@/lib/learning/playbook";
 import { getRulePerformance, underperformingRules } from "@/lib/learning/ruleEvidence";
 import { applyMeasuredConfidence } from "@/lib/learning/ruleConfidence";
 import { addressedRejections, outstandingRejections } from "@/lib/learning/humanFeedback";
@@ -123,6 +128,12 @@ export async function runCoach(worldId: string, tick: number): Promise<{ version
   const perf = getRulePerformance(worldId);
   const weak = underperformingRules(perf);
 
+  // Failure memory: the dedupe guard below only compares against ACTIVE rules,
+  // so a rule retired two cycles ago can be re-derived from the same evidence
+  // and quietly come back. Recently retired rules join the digest (so the live
+  // coach knows) and the dedupe corpus (so a re-add is dropped either way).
+  const recentlyRetired = getRecentlyRetiredRules(worldId);
+
   const digest = {
     // Human feedback leads the digest on purpose. When it trailed the outcome
     // reports, small local models wrote about metrics and silently ignored the
@@ -158,6 +169,13 @@ export async function runCoach(worldId: string, tick: number): Promise<{ version
       citations: p.citations,
       note: "cited repeatedly by posts that underperformed — amend or retire unless the reports explain it away",
     })),
+    recentlyRetiredRules_DO_NOT_READD: recentlyRetired.map((r) => ({
+      ruleKey: r.ruleKey,
+      category: r.category,
+      text: r.text,
+      retiredInVersion: r.retiredInVersion,
+      note: "this failed or was consolidated away — do not re-add it unless NEW evidence in this digest contradicts the retirement",
+    })),
     outcomeReports: reports.map((r) => ({
       id: r.id,
       postId: r.postId,
@@ -190,8 +208,12 @@ export async function runCoach(worldId: string, tick: number): Promise<{ version
   }
 
   // The coach re-derives the same lesson from the same report on consecutive
-  // cycles; drop additions that restate a rule already in the playbook.
-  const activeTexts = getActiveRules(worldId).map((r) => r.text);
+  // cycles; drop additions that restate a rule already in the playbook — or one
+  // that was recently retired (failure memory, not just dedupe).
+  const activeTexts = [
+    ...getActiveRules(worldId).map((r) => r.text),
+    ...recentlyRetired.map((r) => r.text),
+  ];
   const deduped = dropDuplicateAdds(coach.data.playbookChanges.add, activeTexts);
   const changes: PlaybookChanges = { ...coach.data.playbookChanges, add: deduped.kept };
 
