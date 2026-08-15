@@ -94,7 +94,7 @@ End-to-end GTM impact: full simulated funnel to booked meetings · Learning loop
 
 ## Roadmap — from reactive rules to long-term memory management
 
-**Shipping today (submission day):**
+**Shipped (submission day):**
 
 - **Failure memory** — retired rules, typed rejections, and missed-outcome combos are fed back into every coach digest and strategist context, so the agent stops repeating historical mistakes (no vector store needed: at playbook scale, SQL + an LLM reading all rules beats embeddings).
 - **Librarian consolidation** — when the playbook grows past 10 rules, a consolidation pass merges overlapping rules into contextual ones and retires contradictions; human rejection rules are never auto-retired.

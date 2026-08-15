@@ -28,9 +28,9 @@ Platform is always called Pictogram on screen and out loud.
 
 ## 0:45 — Heartbeat and proposal anatomy
 
-- Click: "Run heartbeat" in the top bar, then open `/approvals` and expand one proposal card. Point at each element: reasoning, cited playbook rule IDs (chips), bandit arm stats, predicted-effect ranges, risk class badge.
-- Say: "Every proposal explains itself — which playbook rules drove it, what the bandit believes, and predicted ranges the strategist will be scored against later."
-- Judge notices: explainability is structural (rule IDs and numbers), not a decorative text blob.
+- Click: "Run heartbeat" in the top bar, then open `/approvals` and expand one proposal card. Point at each element: reasoning, cited playbook rule IDs (chips), bandit arm stats, predicted-effect ranges, risk class badge — and the **"dreamed #N of 48" chip**.
+- Say: "Before proposing, the agent ran every archetype-slot-topic variant through its dream of the market — its learned model of the audience, never the hidden truth — and this candidate ranked #N. Every proposal explains itself: rules, bandit beliefs, dream rank, and predicted ranges it will be scored against."
+- Judge notices: explainability is structural (rule IDs and numbers), and the agent sanity-checks itself against its own world-model before asking for approval.
 
 ## 1:30 — Approve one, reject one with a reason
 
@@ -46,9 +46,9 @@ Platform is always called Pictogram on screen and out loud.
 
 ## 2:45 — The learning moment
 
-- Click: open `/brain` > Playbook tab — show the new version's diff (added rules green, amended amber, retired red) including a rule sourced from the typed rejection. Switch to Bandits tab — posterior means have shifted; the champion arm is highlighted. Then click "Run heartbeat" again and open the newest proposal.
-- Say: "One day of outcomes plus one human rejection changed the playbook — and the very next proposal behaves differently and cites the new rule by ID."
-- Judge notices: the full loop closed on screen — outcome, lesson, changed behavior, with the evidence chain intact.
+- Click: open `/brain` > Playbook tab — show the new version's diff (added rules green, amended amber, retired red) including a rule sourced from the typed rejection **carrying your own words**. Switch to Bandits tab — posterior means have shifted; the champion arm is highlighted. Then click "Run heartbeat" again and open the newest proposal.
+- Say: "One day of outcomes plus one human rejection changed the playbook — and the very next proposal behaves differently and cites the new rule by ID. The memory manages itself, too: near-duplicate rules get deduped, retired lessons can't sneak back in, and past ten rules a librarian pass consolidates overlapping rules into contextual ones — never touching a rule a human created by rejecting."
+- Judge notices: the full loop closed on screen — outcome, lesson, changed behavior, with the evidence chain intact — and the playbook is curated long-term memory, not an append-only log.
 
 ## 3:30 — DM thread to booked meeting
 
@@ -65,9 +65,9 @@ Platform is always called Pictogram on screen and out loud.
 
 ## 4:30 — Trust tour
 
-- Click: flip the Propose/Autopilot toggle and show caps in settings (posts/day, DMs/day, quiet hours, budgets); scroll `/activity` — every actor's steps logged; hit the pause switch; then in `/brain`, roll the playbook back to v1 and show the new rollback version appear.
-- Say: "Autonomy is a dial, not a leap of faith: hard caps in one gate function, a full activity trail, a kill switch, and a revertible brain."
-- Judge notices: trust primitives are enforced in code (`checkGuardrails`, versioned playbook), not promised in the UI.
+- Click: point at the **"earned autonomy" badge** in the top bar (hover it for the calibration numbers); flip the Propose/Autopilot toggle and show caps in `/settings` (posts/day, DMs/day, quiet hours, budgets); scroll `/activity` — every actor's steps logged, including the `earned_autonomy` trust events; hit the pause switch; then in `/brain`, roll the playbook back to v1 and show the new rollback version appear.
+- Say: "Autonomy is a dial the agent has to EARN: predict your own outcomes accurately for five straight posts and low-risk actions skip the queue — miss, and the privilege revokes itself. Sensitive actions never skip it. Under that: hard caps in one gate function, a full activity trail, a kill switch, and a revertible brain."
+- Judge notices: trust primitives are enforced in code (`checkGuardrails`, versioned playbook), and autonomy is tied to measured competence, not a checkbox.
 
 ## The snapshot everything runs against
 

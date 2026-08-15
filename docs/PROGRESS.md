@@ -159,6 +159,12 @@ read tokens, so restyling happens there, not in page files.
 | Ground-truth Reveal tab on `/brain` | done (merged) | Omar's per-dimension verdicts + affinity heatmap + `lib/db/groundTruth.ts` read-path, plus Anurup's spoiler gate and learned-rules side-by-side; duplicate queries.ts implementation removed. Tests rewritten against the merged module incl. genesis-scale invariants |
 | Live hardening from B6 findings | done | dm_reply-without-open-thread dropped at proposal time (+ gates test); merged strategist prompt (newest rules + measured track record + dm_reply restriction + calibration widening); merged coach prompt (mandatory ADD for rejections — amends cannot carry evidenceRefs — + track-record amend/retire) |
 | Local-first identity (D22) | done | `MODEL_PROVIDER` defaults to local; README/env/docs lead with Ollama tiers; cloud opt-in and untested; art director renders seeded SVG in local mode |
+| **Funnel zero-conversion fix** | done | intent differentiates instead of compounding (click 0.35+0.5·PI, signup 0.15+0.45·PI, dm 0.25·dm+0.35·PI); golden regenerated deliberately (signups 0→2, meetings 1→2); checklist snapshot bakes 6 signups / 2 meetings; `tests/funnel.test.ts` |
+| Failure memory | done | `getRecentlyRetiredRules` → digest `recentlyRetiredRules_DO_NOT_READD` + dedupe corpus; retired lessons cannot be silently re-derived; text-based revival clears the memory; `tests/failure-memory.test.ts` |
+| Librarian consolidation | done | past 10 rules, the coach cycle runs a merge/retire pass (SYSTEM.librarian); rejection rules code-guarded from auto-retirement; deterministic mock; `tests/librarian.test.ts` |
+| Sandbox dreaming | done | `learning/dreamer.ts` ranks all 48 archetype/slot/topic candidates against the LEARNED model only (posterior x observed rates, Laplace-smoothed — never `worlds.config`/`personas.hidden`); top-5 in strategist context; "dreamed #N of 48" chip on cards; honest no-signal state; `tests/dreamer.test.ts` |
+| Calibration-earned autonomy | done | hit-rate ≥0.6 over last 5 scored posts waives the human gate for low-risk actions in propose mode; sensitive always gated; derived (revokes itself, survives rollback); trail event + top-bar badge; `tests/autonomy.test.ts` |
+| Design spec | done | `docs/superpowers/specs/2026-08-15-longterm-learning-design.md` — records the learned-model-dreaming epistemics decision and the deferred upgrades |
 
 ### Rule-level outcome attribution (new — closes the playbook learning loop)
 
