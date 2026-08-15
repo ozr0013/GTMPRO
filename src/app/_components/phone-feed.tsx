@@ -100,7 +100,13 @@ function PostCard({
     window.setTimeout(() => setBurst(false), 650);
   };
 
-  const author = isBrand ? slug(brandName) : (post.ambientAuthor ?? "pictogram");
+  // Ambient handles are stored with their "@" (sim/ambient.ts writes account.handle),
+  // brand handles are a bare slug. Strip it so the single "@" below is not doubled
+  // into "@@BudgetBrew" — and so the avatar initials read "BU", not "@B".
+  const author = (isBrand ? slug(brandName) : (post.ambientAuthor ?? "pictogram")).replace(
+    /^@+/,
+    "",
+  );
 
   return (
     <article className="bg-card">

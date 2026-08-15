@@ -34,6 +34,9 @@ yarn-error.log*
 .env*
 !.env.example
 
+# python env for local image generation (see docs/LOCAL_IMAGES.md) — multi-GB
+.venv-images/
+
 # flywheel local state
 flywheel.db
 flywheel.db-*

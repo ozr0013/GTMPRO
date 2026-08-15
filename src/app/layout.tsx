@@ -56,22 +56,19 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
 
           {world ? <TopBar world={world} worlds={worlds} /> : null}
 
-          <main className="flex-1 overflow-x-hidden px-4 pb-14 md:px-8">
-            {world ? (
-              children
-            ) : (
-              <div className="mx-auto mt-10 max-w-lg rounded-3xl bg-card p-10 text-center">
-                <p className="eyebrow">No world yet</p>
-                <h1 className="display mt-3 text-4xl">Grow one to start</h1>
-                <Link
-                  href="/onboarding"
-                  className="mt-7 inline-block rounded-full bg-foreground px-6 py-3 text-[0.7rem] font-bold tracking-widest text-background uppercase"
-                >
-                  Get started
-                </Link>
-              </div>
-            )}
-          </main>
+          {/*
+            No empty-state guard here. This used to render a "no world yet, get
+            started" card in place of `children` whenever getCurrentWorld() was
+            null — which swallowed /onboarding too, the one route that can
+            create a world. The card's own button pointed at /onboarding, so a
+            fresh database rendered the same card forever with no way out.
+
+            It was also redundant: every page under this layout already does
+            `if (!world) redirect("/onboarding")` for itself, which is the right
+            place for it — a layout cannot see the pathname, so it cannot know
+            which routes the guard should not apply to.
+          */}
+          <main className="flex-1 overflow-x-hidden px-4 pb-14 md:px-8">{children}</main>
         </div>
       </body>
     </html>

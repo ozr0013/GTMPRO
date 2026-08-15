@@ -14,6 +14,9 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Nested git worktrees used for parallel agent builds:
     ".worktrees/**",
+    // Python env for local image generation. torch ships bundled .js/.mjs in
+    // site-packages, which otherwise lints as if it were ours.
+    ".venv-images/**",
   ]),
 ]);
 

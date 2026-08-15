@@ -1,15 +1,15 @@
 // Hero images for brand posts (Task C5).
 //
-// Mock mode AND the local provider render a deterministic seeded SVG (zero
-// network, zero keys — D22); only the opt-in cloud provider calls a real image
-// model, since Ollama has no image generation.
+// Live mode calls the image model; mock mode renders a deterministic local SVG so
+// the constraint "MODEL_MODE=mock runs the complete loop with zero network calls"
+// still holds and the demo works offline.
 
 import { db } from "@/lib/db/client";
 import { posts, settings, worlds } from "@/lib/db/schema";
 import type { Archetype } from "@/lib/types";
 import { subRng } from "@/lib/rng";
 import { postStreamKey } from "@/lib/sim/streams";
-import { isLocalProvider } from "./models";
+import { generateImageBytes } from "./imageProvider";
 import { logActivity } from "./log";
 import { eq, and, isNotNull } from "drizzle-orm";
 import fs from "node:fs";
@@ -58,7 +58,55 @@ export interface HeroImageResult {
   ok: boolean;
   imageUrl?: string;
   reason?: string;
+  /** which generator actually produced it — "svg" means the fallback ran */
+  provider?: string;
+  /** set when a real generator was configured but failed, and svg stood in */
+  providerError?: string;
 }
+
+/**
+ * Diffusion models respond to comma-separated visual nouns and camera language,
+ * not to prose instructions — "Art direction: ..." mostly gets ignored, which is
+ * why the earlier prompt produced mush. Lead with the subject, then the shot,
+ * then the light, then quality terms.
+ *
+ * Each archetype gets its own look so a feed of four posts does not read as four
+ * variations of one stock photo.
+ */
+const ARCHETYPE_STYLE: Record<string, string> = {
+  education:
+    "clean flat-lay knolling composition, overhead shot, soft diffused daylight, muted neutral background, shallow depth of field",
+  story:
+    "candid documentary photograph, human hands in frame, warm golden-hour window light, lived-in setting, 35mm",
+  meme: "bold graphic still life, single hero subject, punchy saturated colour, hard directional light, seamless colour backdrop",
+  // "single centred subject" earns its place: at 512² this archetype otherwise
+  // tends to compose a diptych — two half-frames of near-identical packaging.
+  product:
+    "premium product photograph, single centred subject, three-quarter hero angle, soft box lighting with gentle reflections, matte surface, minimal props",
+};
+
+const QUALITY = "sharp focus, high detail, professional colour grading, editorial photography, 4k";
+
+/**
+ * Keeps lettering out of frame — stated as what we want, never as "no text".
+ *
+ * CLIP does not encode negation. Ending the prompt with "no text, no watermark,
+ * no logo" puts the tokens *text*, *watermark* and *logo* in front of the model
+ * with no operator to cancel them, so it reliably paints exactly those: the
+ * product renders came back wearing garbled invented brand names.
+ *
+ * The negative prompt is not a way out here. A distilled Turbo/LCM checkpoint
+ * runs at guidance 0, and with no classifier-free guidance there is no second
+ * pass for the negative prompt to steer — the bundled server drops it outright.
+ * The bundled server now honours a modest guidance (>1) on Turbo checkpoints so
+ * the negative prompt runs again — but this stays the first line of defence,
+ * since a caller can still be at guidance 0.
+ *
+ * Note what is *absent*: no "label", no "logo", no "text", not even inside a
+ * phrase meant to forbid them. "blank label" put a garbled label on every
+ * bottle; the model matched the noun and ignored the adjective.
+ */
+const UNBRANDED = "plain unmarked matte surfaces, smooth clean finish";
 
 /** Art direction prompt: the copywriter's brief plus house style, no caption text in-frame. */
 export function buildImagePrompt(post: {
@@ -66,12 +114,10 @@ export function buildImagePrompt(post: {
   topic: string;
   creativeBrief: string;
 }): string {
-  return [
-    `Social media hero image for a ${post.archetype} post about ${post.topic}.`,
-    `Art direction: ${post.creativeBrief}.`,
-    "Clean editorial photography style, natural light, uncluttered composition,",
-    "square crop, no text, no logos, no watermarks.",
-  ].join(" ");
+  const subject = post.creativeBrief.replace(/\s+/g, " ").trim();
+  const style = ARCHETYPE_STYLE[post.archetype] ?? ARCHETYPE_STYLE.education;
+  const topic = post.topic.replace(/-/g, " ");
+  return [subject, topic, style, QUALITY, UNBRANDED].join(", ");
 }
 
 export async function generateHeroImage(postId: string): Promise<HeroImageResult> {
@@ -99,29 +145,26 @@ export async function generateHeroImage(postId: string): Promise<HeroImageResult
   const prompt = buildImagePrompt(post);
   let filename: string;
   let bytes: Uint8Array;
+  let usedProvider: string = "svg";
+  let providerError: string | undefined;
 
   try {
-    // Mock mode has no network at all; local mode has an Ollama text server but no
-    // image model. Both take the seeded local render, so the hero button works
-    // keyless in every mode.
-    if ((process.env.MODEL_MODE ?? "mock") === "mock" || isLocalProvider()) {
+    // Try the configured generator first; `svg` short-circuits with no network.
+    const { image, error } = await generateImageBytes(prompt);
+    providerError = error;
+
+    if (image) {
+      filename = `${postId}.${image.ext}`;
+      bytes = image.bytes;
+      usedProvider = image.provider;
+    } else {
+      // Fallback, and the offline default: a seeded local render. Keyed on the
+      // post's stable stream key rather than its UUID so the same scenario draws
+      // byte-identical art and demo screenshots do not drift.
       filename = `${postId}.svg`;
       bytes = new TextEncoder().encode(
-        // keyed on the post's stable stream key, not its UUID, so the same seeded
-        // scenario renders byte-identical art and demo screenshots don't drift
         mockHeroSvg(post.archetype as Archetype, post.creativeBrief, world.seed, postStreamKey(post)),
       );
-    } else {
-      // imported lazily so mock mode never pulls the provider client into the process
-      const { generateImage } = await import("ai");
-      const { openai } = await import("@ai-sdk/openai");
-      const { image } = await generateImage({
-        model: openai.image(process.env.MODEL_IMAGE ?? "gpt-image-1"),
-        prompt,
-        size: "1024x1024",
-      });
-      filename = `${postId}.${extensionFor(image.mediaType)}`;
-      bytes = image.uint8Array;
     }
 
     fs.mkdirSync(OUTPUT_DIR, { recursive: true });
@@ -151,21 +194,20 @@ export async function generateHeroImage(postId: string): Promise<HeroImageResult
     actor: "artdirector",
     action: "generate_image",
     status: "ok",
-    summary: `Hero image generated (${gate.remaining} left in budget)`,
+    // name the provider: silently falling back to the placeholder while the
+    // operator believes a GPU is rendering is the confusing failure here
+    summary: providerError
+      ? `Hero image fell back to placeholder — ${providerError}`
+      : `Hero image generated via ${usedProvider} (${gate.remaining} left in budget)`,
     refType: "post",
     refId: postId,
-    detail: { prompt, imageUrl },
+    detail: { prompt, imageUrl, provider: usedProvider, providerError },
   });
 
-  return { ok: true, imageUrl };
+  return { ok: true, imageUrl, provider: usedProvider, providerError };
 }
 
-function extensionFor(mediaType: string): string {
-  if (mediaType.includes("png")) return "png";
-  if (mediaType.includes("webp")) return "webp";
-  if (mediaType.includes("jpeg") || mediaType.includes("jpg")) return "jpg";
-  return "png";
-}
+// (media-type -> extension now lives in imageProvider, next to the fetch that needs it)
 
 const MOCK_PALETTE: Record<Archetype, [string, string]> = {
   education: ["#38bdf8", "#34d399"],

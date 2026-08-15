@@ -1,0 +1,31 @@
+# Hero image generation — see docs/LOCAL_IMAGES.md
+#
+#   pip install -r requirements-images.txt
+#   npm run images:server
+#
+# macOS gets the right thing from PyPI: torch's Mac wheel has Metal (MPS) built
+# in, so plain `pip install -r` is all an Apple Silicon machine needs.
+#
+# Windows + NVIDIA is the exception. PyPI's Windows wheel is CPU-only — it
+# installs and imports fine, so nothing errors; the GPU just never gets used and
+# every image takes tens of seconds instead of under one. Install the CUDA build
+# explicitly FIRST, then this file:
+#
+#   pip install torch --index-url https://download.pytorch.org/whl/cu126
+#
+# Confirm with: python -c "import torch; print(torch.cuda.is_available())"
+# The server prints its device on startup too, so a silent CPU fallback is
+# visible rather than merely slow.
+#
+# Wheels lag new Python releases: on 3.14 the cu126 index has builds and cu121
+# does not. If pip says "no matching distribution", the Python is newer than that
+# CUDA channel — try a later cu-number, or use Python 3.12.
+#
+# Deliberately CPU-only? `pip install torch --index-url https://download.pytorch.org/whl/cpu`
+
+torch>=2.2
+diffusers>=0.27
+transformers>=4.38
+accelerate>=0.27
+safetensors>=0.4
+pillow>=10.0

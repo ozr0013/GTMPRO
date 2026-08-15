@@ -112,7 +112,9 @@ describe("art director hero images (mock mode)", () => {
       creativeBrief: "Split-frame brew diagram",
     });
     expect(prompt).toContain("Split-frame brew diagram");
-    expect(prompt).toContain("brewing-science");
-    expect(prompt).toMatch(/no text/i);
+    // topic slugs are de-hyphenated for the image model — see image-provider.test.ts
+    expect(prompt).toContain("brewing science");
+    // stated positively — "no text" reads to CLIP as "text"; see image-provider.test.ts
+    expect(prompt).toMatch(/unmarked/i);
   });
 });
