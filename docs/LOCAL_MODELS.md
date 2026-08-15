@@ -18,6 +18,35 @@ Why these: **Qwen3** has the best JSON/instruction discipline per GB at laptop s
 
 The cheap roles (persona voices, community DMs) intentionally default to the judge model so low-RAM machines keep only **two** models resident — this avoids constant model swapping, which is the real 16 GB killer.
 
+### On a discrete GPU, size by VRAM — not system RAM
+
+The table above reads correctly on Apple Silicon, where unified memory *is* the
+budget. On a Windows/Linux box with an NVIDIA card the binding constraint is the
+card, which is far smaller than system RAM — and picking a tier by RAM quietly
+lands you on a model that cannot fit.
+
+Nothing errors when it doesn't fit. Ollama offloads the overflow to CPU and
+everything still works, just many times slower, which reads as "the app is
+hanging" rather than "wrong model".
+
+Measured on an RTX 4060 Laptop (8 GB VRAM, 32 GB system RAM), same world, same
+heartbeat:
+
+| Actor / judge | One heartbeat |
+|---|---|
+| `qwen3:14b` + `gemma3:12b` (the "32 GB" row, chosen by system RAM) | **404 s** |
+| `qwen3:8b` + `gemma3:4b` (fits the card) | **74 s** |
+
+So on a discrete GPU read the tier table as **VRAM**, and check with
+`nvidia-smi --query-gpu=memory.total --format=csv`. A model needs roughly its
+download size free; `qwen3:14b` is 8.6 GB and will not fit an 8 GB card at all.
+
+Two things also compete for that VRAM and are easy to miss: the bundled image
+server (`npm run images:server`) keeps Stable Diffusion resident even while
+idle — worth stopping during live local-model work — and GPU-accelerated desktop
+apps such as editors and browsers. `nvidia-smi` shows who is holding what, and
+`ollama ps` shows what Ollama itself currently has loaded.
+
 ## 2. Install Ollama
 
 - **macOS:** `brew install ollama && brew services start ollama` (or download Ollama.app from ollama.com and launch it)
@@ -80,7 +109,8 @@ The e2e driver plays heartbeat → approve/reject → two sim days. Success look
 | Symptom | Fix |
 |---|---|
 | `connection refused` on 11434 | `brew services restart ollama` (mac) / relaunch Ollama app |
-| Sim-day advance extremely slow, fans loud | Wrong tier — check `ollama ps` for loaded model sizes; drop a tier |
+| Sim-day advance extremely slow, fans loud | Wrong tier — check `ollama ps` for loaded model sizes; drop a tier. On a discrete GPU also check `nvidia-smi`: a model larger than VRAM silently offloads to CPU (see §1) |
+| Heartbeat seems to hang, no error anywhere | Almost always the above — it is running, just slowly. Time one directly before assuming a bug |
 | Out-of-memory / system freeze | Close browser tabs/Docker; use the 12 GB tier config |
 | Frequent quarantined proposals in `/activity` | Model too small for the strategist schema — raise actor one tier |
 | Models reload between every call | You overrode `MODEL_CHEAP_LOCAL` to a third model on a 16 GB machine — remove it |
