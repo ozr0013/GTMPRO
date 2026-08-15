@@ -6,6 +6,10 @@ import { SYSTEM } from "@/lib/agents/prompts";
 import { logActivity } from "@/lib/agents/log";
 import { CoachOutput } from "@/lib/contracts";
 import { createPlaybookVersion, getActiveRules, type PlaybookChanges } from "@/lib/learning/playbook";
+import { getRulePerformance, underperformingRules } from "@/lib/learning/ruleEvidence";
+import { applyMeasuredConfidence } from "@/lib/learning/ruleConfidence";
+import { addressedRejections, outstandingRejections } from "@/lib/learning/humanFeedback";
+import { collapseConvergedRules, dropDuplicateAdds } from "@/lib/learning/ruleDedupe";
 import { desc, eq } from "drizzle-orm";
 
 /** Unified word-level diff (`-removed` / `+added` / ` unchanged`). */
@@ -96,9 +100,10 @@ export async function runCoach(worldId: string, tick: number): Promise<{ version
     })
     .filter((e): e is NonNullable<typeof e> => e != null);
 
-  const rejections = decided
-    .filter((p) => p.status === "rejected")
-    .map((p) => ({ proposalId: p.id, reason: p.humanReason ?? "" }));
+  // Outstanding = no playbook rule cites this rejection yet, regardless of when it
+  // happened. A rejection the coach ignored is re-raised next cycle instead of
+  // ageing out of the time window unaddressed.
+  const rejections = outstandingRejections(worldId);
 
   if (reports.length === 0 && rejections.length === 0 && edits.length === 0) {
     logActivity({
@@ -112,8 +117,47 @@ export async function runCoach(worldId: string, tick: number): Promise<{ version
     return {};
   }
 
+  // Rule-level attribution: which rules were cited by posts that hit or missed.
+  // Without this the coach has no grounds to amend or retire anything, so the
+  // playbook only ever grows.
+  const perf = getRulePerformance(worldId);
+  const weak = underperformingRules(perf);
+
   const digest = {
-    activeRules: getActiveRules(worldId).map((r) => ({ ruleKey: r.ruleKey, category: r.category, text: r.text })),
+    // Human feedback leads the digest on purpose. When it trailed the outcome
+    // reports, small local models wrote about metrics and silently ignored the
+    // rejection — the exact beat the product is judged on.
+    humanRejections_MUST_ADDRESS: rejections.map((r) => ({
+      proposalId: r.proposalId,
+      humanSaid: r.reason,
+      rejectedCaption: r.rejectedCaption,
+      requirement:
+        "Add or amend a rule that would have prevented this draft, and put this proposalId in that rule's evidenceRefs.",
+    })),
+    humanEdits: edits,
+    activeRules: getActiveRules(worldId).map((r) => {
+      const p = perf.get(r.ruleKey);
+      return {
+        ruleKey: r.ruleKey,
+        category: r.category,
+        text: r.text,
+        measured: p
+          ? {
+              citations: p.citations,
+              meanReward: Number(p.meanReward.toFixed(2)),
+              exceeded: p.exceeded,
+              met: p.met,
+              missed: p.missed,
+            }
+          : "never cited by a scored post",
+      };
+    }),
+    rulesContradictedByEvidence: weak.map((p) => ({
+      ruleKey: p.ruleKey,
+      meanReward: Number(p.meanReward.toFixed(2)),
+      citations: p.citations,
+      note: "cited repeatedly by posts that underperformed — amend or retire unless the reports explain it away",
+    })),
     outcomeReports: reports.map((r) => ({
       id: r.id,
       postId: r.postId,
@@ -122,8 +166,6 @@ export async function runCoach(worldId: string, tick: number): Promise<{ version
       actual: r.actual,
       predicted: r.predicted,
     })),
-    rejections,
-    edits,
   };
 
   const coach = await callAgent("coach", CoachOutput, SYSTEM.coach, JSON.stringify(digest, null, 2), {
@@ -143,7 +185,47 @@ export async function runCoach(worldId: string, tick: number): Promise<{ version
     return {};
   }
 
-  const changes: PlaybookChanges = coach.data.playbookChanges;
+  // The coach re-derives the same lesson from the same report on consecutive
+  // cycles; drop additions that restate a rule already in the playbook.
+  const activeTexts = getActiveRules(worldId).map((r) => r.text);
+  const deduped = dropDuplicateAdds(coach.data.playbookChanges.add, activeTexts);
+  const changes: PlaybookChanges = { ...coach.data.playbookChanges, add: deduped.kept };
+
+  if (deduped.dropped.length > 0) {
+    logActivity({
+      worldId,
+      tick,
+      actor: "coach",
+      action: "dedupe",
+      status: "ok",
+      summary: `Dropped ${deduped.dropped.length} rule(s) that restated an existing one`,
+      detail: deduped.dropped,
+    });
+  }
+
+  // Amends can converge separate rules onto the same sentence, which the add-guard
+  // above cannot see. Project the post-change rule set and retire whatever has
+  // collapsed into a duplicate, keeping the copy with the most evidence.
+  const projected = getActiveRules(worldId)
+    .filter((r) => !changes.retire.includes(r.ruleKey))
+    .map((r) => ({
+      ruleKey: r.ruleKey,
+      text: changes.amend.find((a) => a.ruleKey === r.ruleKey)?.text ?? r.text,
+    }));
+  const converged = collapseConvergedRules(projected, (key) => perf.get(key)?.citations ?? 0);
+  if (converged.retire.length > 0) {
+    changes.retire = [...changes.retire, ...converged.retire];
+    logActivity({
+      worldId,
+      tick,
+      actor: "coach",
+      action: "dedupe",
+      status: "ok",
+      summary: `Collapsed ${converged.retire.length} rule(s) that amendments had converged onto an existing rule`,
+      detail: converged.groups,
+    });
+  }
+
   const empty = changes.add.length === 0 && changes.amend.length === 0 && changes.retire.length === 0;
   if (empty) {
     logActivity({
@@ -158,6 +240,28 @@ export async function runCoach(worldId: string, tick: number): Promise<{ version
   }
 
   const res = createPlaybookVersion(worldId, changes, "coach", tick, coach.data.changeSummary);
+  // carried-forward rules keep their seeded confidence; re-derive it from measured outcomes
+  const reconfidenced = applyMeasuredConfidence(worldId, res.versionId);
+
+  // Audit the beat the product is judged on. An ignored rejection stays
+  // outstanding and leads the next digest, so this surfaces rather than silently
+  // disappearing — and gives us a metric for whether the coach is listening.
+  const { addressed, ignored } = addressedRejections(worldId, rejections);
+  if (rejections.length > 0) {
+    logActivity({
+      worldId,
+      tick,
+      actor: "coach",
+      action: "human_feedback",
+      status: ignored.length === 0 ? "ok" : "blocked",
+      summary:
+        ignored.length === 0
+          ? `Turned ${addressed.length} human rejection(s) into playbook rules`
+          : `${ignored.length} of ${rejections.length} rejection(s) still unaddressed — will lead the next digest`,
+      detail: { addressed, ignored },
+    });
+  }
+
   logActivity({
     worldId,
     tick,
@@ -167,6 +271,17 @@ export async function runCoach(worldId: string, tick: number): Promise<{ version
     summary: coach.data.changeSummary,
     refType: "playbook",
     refId: res.versionId,
+    detail: {
+      added: changes.add.length,
+      amended: changes.amend.length,
+      retired: changes.retire.length,
+      rulesReconfidenced: reconfidenced,
+      evidenceBase: [...perf.values()].map((p) => ({
+        ruleKey: p.ruleKey,
+        citations: p.citations,
+        meanReward: Number(p.meanReward.toFixed(2)),
+      })),
+    },
   });
   return { versionId: res.versionId };
 }

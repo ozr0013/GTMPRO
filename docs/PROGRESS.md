@@ -2,6 +2,45 @@
 
 Update this every working session. Definition of done: code + tests + a row here.
 
+---
+
+## ⚠️ Right now — read this before starting anything
+
+Last updated: **2026-08-14, end of Omar's session.**
+
+**Suite: 80 tests green across 23 files.** `npm run verify` and `next build` both clean on `main`.
+
+### Claimed / do NOT duplicate
+
+| Area | Who | State |
+|---|---|---|
+| **B6 local models (Ollama)** | Omar — **done**, was marked todo for Minh | Fully working end-to-end. Do not re-do. Findings below. |
+| Rule-level attribution, coach/rejection fixes, rule dedupe | Omar | On `oz/agent-rule-attribution`, **not merged yet** |
+| Mission Control UI (all of Track C, C1–C5) | Omar | Merged to `main` |
+
+### Unmerged branches on origin
+
+| Branch | Contains | Merge state |
+|---|---|---|
+| `oz/agent-rule-attribution` | rule attribution, human-feedback fix, rule dedupe, local-model fixes | **open — needs review/merge** |
+| `oz/c5-hero-images-v2`, `oz/ui-editorial`, `oz/ui-speedrun`, `oz/track-c-mission-control` | already merged into `main` | safe to delete |
+
+### Known-open, unclaimed — good things to pick up
+
+1. **Funnel doesn't convert.** A live local-model run produced 36 impressions and 19 likes but
+   **0 link clicks, 0 signups, 0 meetings**. Meetings is the headline bounty metric and it reads
+   zero. This is sim tuning in `sim/funnel.ts` (Track A), not agent logic.
+2. **`/analytics` funnel percentages assume strict nesting.** The ladder computes each stage as a
+   share of the one above, but Track A's funnel rolls clicks/signups/DMs as semi-independent draws
+   off a profile visit — so "DMs 1 · 0.0%" can appear. Numbers honest, percentage misleading.
+3. **`prewarm-demo.ts` predates `docs/DEMO.md`** and runs its own three-cycle path. Should be
+   re-aligned with the actual demo script.
+4. **Live cloud image generation untested** — needs real API keys. Only mock/local paths verified.
+5. **`tests/community-dedupe.test.ts`** is a standalone file to avoid a merge seam; fold into
+   `runners.test.ts` whenever convenient (Minh).
+
+---
+
 ## Phase 0 — walking skeleton (COMPLETE, on main)
 
 | Item | Status | Notes |
@@ -17,7 +56,7 @@ Update this every working session. Definition of done: code + tests + a row here
 | README, HANDOFF, PROGRESS | done | this commit |
 | First push + branch workflow | done | main + track branches on ozr0013/GTMPRO |
 
-Suite at last update: **49 tests green across 16 files** (Track A sim + Track B agent/learning suites + loop integration).
+Suite at Phase 0 close: 49 tests / 16 files. **Now 80 tests / 23 files** (see the block at the top).
 
 ## Track A — Simulator (owner: Anurup)
 
@@ -39,7 +78,33 @@ Track A complete.
 | B3 edit-distillation (wordDiff in coach) | done | tests/edit-distillation.test.ts |
 | B4 autopilot + expiry + budgets | done | publisher.ts expireStaleProposals wired into clock day-boundary |
 | B5 rollback + quarantine surfacing | done | orchestrator getQuarantined/rollbackPlaybook + tests |
-| B6 local models (NEW, owner: Minh) | todo | code + runbook landed (docs/LOCAL_MODELS.md); Minh: install Ollama, pull tier models, run smoke + e2e-drive live-local, report results |
+| B6 local models (Ollama) | **done — by Omar, 2026-08-14** | Minh: **do not redo this.** Verified end-to-end on the 32 GB tier (qwen3:14b acts / gemma3:12b judges). Three blocking bugs found and fixed — see "B6 findings" below. |
+| B7 rule→outcome attribution | **done — by Omar** | `learning/ruleEvidence.ts` + `ruleConfidence.ts`. The playbook now learns from outcomes the way the bandit already did. On `oz/agent-rule-attribution`. |
+| B8 human rejections must change the playbook | **done — by Omar** | `learning/humanFeedback.ts`. Rejections led nowhere before; tracked by addressed-ness now, not by time window. Same branch. |
+| B9 rule dedupe / collapse | **done — by Omar** | `learning/ruleDedupe.ts`. Guards both additions and amendment-convergence. Same branch. |
+
+### B6 findings — local mode had never completed a loop
+
+Ran the full system with zero API keys. It did not work; three bugs, all fixed:
+
+1. **`supportsStructuredOutputs` was never set** on `createOpenAICompatible` in `models.ts`.
+   The provider silently dropped the JSON schema on every call ("responseFormat is not
+   supported"), so the model free-formed and **no `generateObject` could ever succeed** —
+   genesis died first, but the strategist, critic, analyst and coach were equally dead.
+   `npm run smoke` passed the whole time because `generateText` carries no schema, which is
+   why this survived: **smoke is not sufficient to validate local mode, e2e-drive is.**
+2. **`artdirector.ts` branched only on `MODEL_MODE`**, so live+local called the *cloud* OpenAI
+   image API with no key. Now takes the local render, per the runbook's stated behaviour.
+3. **Negative predicted counts.** qwen3 returned `impressions: [-10, 30]`; the contract types
+   ranges as plain numbers so it validated. That rendered as "−10–30" in approvals, dragged
+   `computeReward` (which averages the bounds), and inflated calibration hit-rate. Clamped to
+   non-negative, ordered ranges in `orchestrator.ts`.
+
+**Verified working:** genesis produced 5 real segments / 5 topics / 100 personas; the strategist
+cited `[seed-1]` *and* a Thompson probability of 0.704; personas argued back in character; the
+coach wrote v2→v4 including a **retirement** and a funnel-driven amendment. Setup notes: this
+machine fits ~63% of a 14b on GPU, so a sim-day advance takes **~12 minutes**, not the runbook's
+1–4. Budget for that in any live-local demo, or use the 16 GB tier.
 
 ## Track C — Mission Control UX (owner: Omar)
 
@@ -87,6 +152,66 @@ read tokens, so restyling happens there, not in page files.
 - **Buttons are pills.** `rounded-full`, uppercase, bold, wide tracking.
 - Note: `<html>` must not carry `h-full` — pinning it to the viewport breaks the
   scroll container that the sticky masthead resolves against.
+
+### Rule-level outcome attribution (new — closes the playbook learning loop)
+
+The bandit learned from outcomes; the **playbook did not**. The coach received outcome
+reports and human decisions but nothing linking *which rules were cited by posts that
+hit or missed* — so despite a prompt saying "amend or retire rules contradicted by
+evidence", it had no evidence to act on. Consequences: the playbook only ever grew, and
+`playbook_rules.confidence` sat at its seeded value forever while the Brain view rendered
+it as though it meant something.
+
+- **`learning/ruleEvidence.ts`** derives per-rule performance with **no schema change** —
+  the links already exist as `outcome_reports.postId → posts.proposalId →
+  proposals.evidence.ruleIds`. Exposes citations, exceeded/met/missed, mean bandit reward,
+  and a confidence shrunk toward the 0.5 prior so one lucky post can't read as certainty.
+- **`learning/ruleConfidence.ts`** writes measured confidence onto each new version
+  (`createPlaybookVersion` copies confidence forward unchanged). Derived, not accumulated,
+  so it stays correct across rollbacks.
+- **Coach digest** now carries each rule's track record plus a `rulesContradictedByEvidence`
+  list (≥2 citations, mean reward < 0.4 — conservative on purpose).
+- **Strategist context** carries the same track record, so citations favour what has worked.
+- **Brain → Playbook** shows `confidence · n=N`, colour-coded, or "untested".
+- Tests: `tests/rule-evidence.test.ts` (attribution, shrinkage, conservative flagging,
+  confidence written through to the UI view).
+
+Track B owners: the flagging thresholds in `underperformingRules` are a judgement call —
+tune freely, the derivation is the part worth keeping.
+
+### Human rejections were being silently dropped (fixed)
+
+Observed live on local models: a human rejected a proposal with "too salesly" and **neither
+v2 nor v3 mentioned tone at all** — the coach wrote about outcome metrics both times. The
+headline product claim (reject with a reason → playbook changes → next proposal differs)
+did not hold. Two causes:
+
+1. **Ordering.** The digest listed rejections *after* active rules and outcome reports, so a
+   small local model reliably wrote about metrics instead. Human feedback now leads the
+   digest under `humanRejections_MUST_ADDRESS`, carrying the rejected caption so the coach
+   can write a preventive rule, and the coach prompt makes addressing them a precondition.
+2. **The time window leaked.** `decidedTick >= latest.createdTick` re-digested a decision made
+   on the same tick as a version, while letting a decision age out unaddressed once a later
+   version landed. `learning/humanFeedback.ts` now tracks **addressed-ness** instead: a
+   rejection is outstanding until some rule cites its proposalId in `evidence.refs`. An
+   ignored rejection is re-raised next cycle rather than vanishing, and the coach logs a
+   `human_feedback` activity row saying how many it addressed vs ignored — so "is the coach
+   listening?" is now measurable rather than vibes.
+
+### Near-duplicate rules (fixed)
+
+The coach re-derives the same lesson from the same report each cycle. Live output had two
+rules both reading "Educational posts must use the 'Did you know?' format and include a clear
+CTA… 35%", and three of five rules citing one post. `learning/ruleDedupe.ts` drops additions
+that restate an existing rule (Jaccard over content words, threshold 0.6) and logs what it
+dropped rather than discarding silently.
+
+**Golden regenerated** (`playbookVersionCount` 5→2, `activeRuleCount` 7→4, everything else
+byte-identical). The old snapshot was recording three versions that each re-added the *same*
+canned mock rule — accretion recorded as if it were learning. The mock coach now returns
+varied lessons and, importantly, has a **rejection branch**, so the offline demo exercises the
+human-feedback beat: e2e-drive's "Too promotional" rejection now yields
+"Lead with the insight, not the offer: no discounts or urgency in the first sentence."
 
 ## Shared-file change announcements (additive-only rule)
 

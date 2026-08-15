@@ -59,9 +59,29 @@ export function PlaybookPanel({
                       {rule.ruleKey}
                     </span>
                     <span className="flex-1 text-[0.88rem] leading-relaxed">{rule.text}</span>
-                    <span className="shrink-0 font-mono text-[0.65rem] text-muted-foreground tabular-nums">
-                      {rule.confidence.toFixed(2)}
-                    </span>
+                    {/* measured track record — the number only moves once scored
+                        posts have cited this rule */}
+                    {rule.track ? (
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 font-mono text-[0.62rem] tabular-nums ${
+                          rule.track.meanReward >= 0.6
+                            ? "bg-positive/12 text-positive"
+                            : rule.track.meanReward < 0.4
+                              ? "bg-destructive/10 text-destructive"
+                              : "bg-muted text-muted-foreground"
+                        }`}
+                        title={`${rule.track.citations} scored post(s) cited this rule · ${rule.track.exceeded} exceeded / ${rule.track.missed} missed`}
+                      >
+                        {rule.confidence.toFixed(2)} · n={rule.track.citations}
+                      </span>
+                    ) : (
+                      <span
+                        className="shrink-0 font-mono text-[0.62rem] text-muted-foreground/60 tabular-nums"
+                        title="not yet cited by a scored post"
+                      >
+                        {rule.confidence.toFixed(2)} · untested
+                      </span>
+                    )}
                   </summary>
                   <div className="bg-muted/30 px-6 py-3 pl-[calc(1.5rem+7rem)] md:px-10 md:pl-[calc(2.5rem+7rem)]">
                     <p className="eyebrow">{SOURCE_LABEL[rule.evidence.sourceType] ?? rule.evidence.sourceType}</p>

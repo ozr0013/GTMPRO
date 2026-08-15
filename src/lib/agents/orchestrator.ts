@@ -11,6 +11,7 @@ import type {
   Archetype,
   DmReplyPayload,
   PostPayload,
+  PredictedEffect,
   ReplyPayload,
   TimeSlot,
   WorldConfig,
@@ -31,6 +32,7 @@ import { getArmStats, type ArmStats } from "@/lib/learning/bandit";
 import { rollingHitRate, calibrationNote } from "@/lib/learning/calibration";
 import { checkGuardrails } from "@/lib/learning/guardrails";
 import { getActiveRules, rollbackTo } from "@/lib/learning/playbook";
+import { formatRulePerformance, getRulePerformance } from "@/lib/learning/ruleEvidence";
 import { pick, subRng, type Rng } from "@/lib/rng";
 import { and, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
@@ -83,6 +85,7 @@ function renderContext(
   armStats: ArmStats[],
   hitRate: number | null,
   pillars: string[],
+  rulePerformance: string,
 ): string {
   const since = Math.max(0, tick - 24);
   const engs = db
@@ -117,6 +120,10 @@ function renderContext(
     "",
     "Playbook rules:",
     formatRules(rules) || "(none)",
+    "",
+    // measured track record per rule, so citations favour what has actually worked
+    "Rule track record (from scored posts that cited each rule):",
+    rulePerformance,
     "",
     "Bandit arms (cite banditArmId on post actions):",
     arms,
@@ -162,6 +169,31 @@ function groundTopic(
     detail: { requested: action.topic, used: topic, pillars },
   });
   return { ...action, topic };
+}
+
+/**
+ * Counts can't be negative and a range can't run backwards, but the contract only
+ * types these as numbers — so a model is free to predict `impressions: [-10, 30]`
+ * and pass validation. qwen3:14b does exactly that. Left alone it corrupts three
+ * things downstream: the range renders as "-10–30" in approvals, `computeReward`
+ * averages the bounds so a negative floor drags the bandit's reward, and
+ * calibration counts a "hit" for any actual inside an impossibly wide band.
+ *
+ * Clamping beats rejecting here: the prediction is directionally fine and
+ * quarantining a whole proposal over one bad floor is disproportionate.
+ */
+function sanitizePrediction(effect: PredictedEffect): PredictedEffect {
+  const fix = ([lo, hi]: [number, number]): [number, number] => {
+    const a = Math.max(0, Math.round(lo));
+    const b = Math.max(0, Math.round(hi));
+    return a <= b ? [a, b] : [b, a];
+  };
+  return {
+    impressions: fix(effect.impressions),
+    likes: fix(effect.likes),
+    linkClicks: fix(effect.linkClicks),
+    signups: fix(effect.signups),
+  };
 }
 
 function resolveArmId(action: StratAction, armStats: ArmStats[]): string | undefined {
@@ -282,7 +314,7 @@ async function processAction(
         banditArmId,
         signals: [action.angle],
       },
-      predictedEffect: action.predictedEffect,
+      predictedEffect: sanitizePrediction(action.predictedEffect),
       riskClass: action.riskClass,
       createdTick: world.simTick,
     })
@@ -324,7 +356,15 @@ export async function runHeartbeat(worldId: string): Promise<{ proposalIds: stri
   const armStats = getArmStats(worldId, rng);
   const hitRate = rollingHitRate(worldId);
   const pillars = (world.config as WorldConfig).topics;
-  const context = renderContext(worldId, tick, rules, armStats, hitRate, pillars);
+  const context = renderContext(
+    worldId,
+    tick,
+    rules,
+    armStats,
+    hitRate,
+    pillars,
+    formatRulePerformance(getRulePerformance(worldId)),
+  );
 
   const strat = await callAgent("strategist", StrategistOutput, SYSTEM.strategist, context, {
     worldSeed: world.seed,

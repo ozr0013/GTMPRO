@@ -9,6 +9,7 @@ import { posts, settings, worlds } from "@/lib/db/schema";
 import type { Archetype } from "@/lib/types";
 import { subRng } from "@/lib/rng";
 import { postStreamKey } from "@/lib/sim/streams";
+import { isLocalProvider } from "./models";
 import { logActivity } from "./log";
 import { eq, and, isNotNull } from "drizzle-orm";
 import fs from "node:fs";
@@ -100,7 +101,10 @@ export async function generateHeroImage(postId: string): Promise<HeroImageResult
   let bytes: Uint8Array;
 
   try {
-    if ((process.env.MODEL_MODE ?? "mock") === "mock") {
+    // Mock mode has no network at all; local mode has an Ollama text server but no
+    // image model, and the local runbook specifies rendering the styled creative
+    // brief instead. Both take the seeded local render.
+    if ((process.env.MODEL_MODE ?? "mock") === "mock" || isLocalProvider()) {
       filename = `${postId}.svg`;
       bytes = new TextEncoder().encode(
         // keyed on the post's stable stream key, not its UUID, so the same seeded
