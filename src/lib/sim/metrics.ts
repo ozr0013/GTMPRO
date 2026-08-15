@@ -55,13 +55,38 @@ export function postMetrics(worldId: string, postId: string): PostMetrics {
     const field = ENGAGEMENT_FIELD[e.kind];
     if (field) out[field] += 1;
   }
-  for (const f of db
+
+  const worldFunnel = db
     .select()
     .from(funnelEvents)
-    .where(and(eq(funnelEvents.worldId, worldId), eq(funnelEvents.sourcePostId, postId)))
-    .all()) {
+    .where(eq(funnelEvents.worldId, worldId))
+    .all();
+
+  for (const f of worldFunnel) {
+    if (f.sourcePostId !== postId) continue;
     const field = FUNNEL_FIELD[f.kind];
     if (field) out[field] += 1;
+  }
+
+  /*
+   * meeting_booked and disqualified are written by the publisher when a DM thread
+   * qualifies, and it has no post in hand — so those rows carry no sourcePostId.
+   * Counting only post-attributed rows made "meetings booked", the headline metric,
+   * permanently zero even when threads were qualifying.
+   *
+   * Attribute them through the conversation: the persona's dm_started row records
+   * the post that opened the thread, so the meeting belongs to that post.
+   */
+  const openedByThisPost = new Set(
+    worldFunnel
+      .filter((f) => f.kind === "dm_started" && f.sourcePostId === postId)
+      .map((f) => f.personaId),
+  );
+  if (openedByThisPost.size > 0) {
+    for (const f of worldFunnel) {
+      if (f.kind !== "meeting_booked" || f.sourcePostId) continue;
+      if (openedByThisPost.has(f.personaId)) out.meetings += 1;
+    }
   }
   return out;
 }

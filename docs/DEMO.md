@@ -41,7 +41,8 @@ Target runtime 4:50. Rehearse twice from a fresh seed before recording (Task F2)
 
 ## 4:00 — The reveal
 
-- Click: the ground-truth reveal panel on `/brain` (until it lands: `npx drizzle-kit studio`, open `worlds.config`) side-by-side with the learned playbook rules and bandit posteriors.
+- Click: `/brain` > **Reveal** tab. Content archetype reads **Match** — truth favours Education, the agent ranks Education highest after 18 scored posts. Time slot reads **Not Yet**. Scroll to the hidden affinity matrix; each segment's true favourite is ringed.
+- Do not hide the "Not Yet". It got one dimension right and one wrong, and says so with the observation counts — that is what makes the Match believable rather than staged.
 - Say: "The world had a hidden config — cafe owners love product posts, mornings win. The agent never saw it. Compare what it learned."
 - Judge notices: learning is measured against ground truth, not self-graded by the same LLM — and the match is visible.
 
@@ -51,6 +52,25 @@ Target runtime 4:50. Rehearse twice from a fresh seed before recording (Task F2)
 - Say: "Autonomy is a dial, not a leap of faith: hard caps in one gate function, a full activity trail, a kill switch, and a revertible brain."
 - Judge notices: trust primitives are enforced in code (`checkGuardrails`, versioned playbook), not promised in the UI.
 
-## Offline fallback
+## The snapshot everything is recorded against
 
-Demo day needs no network: `scripts/prewarm-demo.ts` (Task C5) runs the demo path in live mode ahead of time and caches the result as a committed `demo-snapshot.db`. If wifi or a provider dies, point `DB_PATH` at a copy of the snapshot, keep `MODEL_MODE=mock`, and replay from the 2:15 mark — every scene above still works because the loop runs fully offline.
+`npx tsx scripts/build-demo.ts` rebuilds the committed `demo-snapshot.db` — 20 sim days,
+seeded so every beat above is **already in the data** and nothing has to be generated on
+camera. It prints a checklist; all of these must read YES before recording:
+
+```
+rejection -> rule : YES   (a rule sourced from the typed rejection)
+pending proposal  : YES   (so /approvals is not empty on screen)
+meeting booked    : YES   (the funnel reaches the money metric)
+reveal Content archetype: MATCH
+rules with measured track record: 4/4
+```
+
+Point `DB_PATH` at a **copy** so a stray click during rehearsal cannot dirty the original:
+
+```bash
+cp demo-snapshot.db demo-run.db && DB_PATH=./demo-run.db MODEL_MODE=mock npm run dev
+```
+
+Live local models work (`MODEL_PROVIDER=local`) but budget **~12 minutes per sim day** on a
+machine that cannot fit the actor model in VRAM — never advance the clock live on camera.

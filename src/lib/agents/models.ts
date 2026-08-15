@@ -142,7 +142,13 @@ function mockFor(role: AgentRole, opts: { worldSeed: string; refId: string }, us
   const archetype = pick(rng, ["education", "story", "meme", "product"] as const);
   const timeSlot = pick(rng, ["morning", "midday", "evening"] as const);
   switch (role) {
-    case "strategist":
+    case "strategist": {
+      // Cite a rule that actually exists in THIS world. The context lists rules as
+      // "[ruleKey] (category) text", so pull real keys out of it — a hard-coded key
+      // matches nothing in a genesis-built playbook, which silently breaks
+      // rule→outcome attribution (every rule reads "untested" forever).
+      const ruleKeys = [...user.matchAll(/\[([a-z0-9-]+)\]/gi)].map((m) => m[1]);
+      const citedRule = ruleKeys.length > 0 ? pick(rng, ruleKeys) : "timing-1";
       return StrategistOutput.parse({
         actions: [
           {
@@ -151,14 +157,15 @@ function mockFor(role: AgentRole, opts: { worldSeed: string; refId: string }, us
             timeSlot,
             topic: "brewing-science",
             angle: `A ${archetype} angle on brewing science`,
-            reasoning: `Mock: bandit favors ${archetype}/${timeSlot}; playbook timing-1 suggests mornings.`,
-            evidenceRuleIds: ["timing-1"],
+            reasoning: `Mock: bandit favors ${archetype}/${timeSlot}; playbook ${citedRule} supports this angle.`,
+            evidenceRuleIds: [citedRule],
             predictedEffect: { impressions: [15, 30], likes: [3, 8], linkClicks: [1, 3], signups: [0, 1] },
             riskClass: "normal",
           },
         ],
         strategyNote: "Mock strategy: explore education content.",
       });
+    }
     case "copywriter":
       return CopywriterOutput.parse({
         caption: `Mock caption ${opts.refId.slice(0, 6)}: water temperature changes everything about extraction.`,
