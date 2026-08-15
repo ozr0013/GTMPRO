@@ -6,6 +6,7 @@ import { SYSTEM } from "@/lib/agents/prompts";
 import { logActivity } from "@/lib/agents/log";
 import { AnalystOutput } from "@/lib/contracts";
 import { computeReward, recordReward } from "@/lib/learning/bandit";
+import { postStreamKey } from "@/lib/sim/streams";
 import { and, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
@@ -64,7 +65,9 @@ export async function runAnalyst(worldId: string, tick: number): Promise<{ repor
       AnalystOutput,
       SYSTEM.analyst,
       JSON.stringify({ postId: post.id, archetype: post.archetype, topic: post.topic, actual, predicted }),
-      { worldSeed: world.seed, refId: post.id },
+      // stable content key, not the row UUID — mock rng derives from refId and
+      // UUID keys break same-seed determinism (the golden run guards this)
+      { worldSeed: world.seed, refId: `an-${postStreamKey(post)}` },
     );
 
     const verdict = analysis.ok ? analysis.data.verdict : "met";

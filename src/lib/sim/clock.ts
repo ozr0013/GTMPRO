@@ -3,9 +3,10 @@
 
 import { db } from "@/lib/db/client";
 import { worlds, posts, engagements, personas } from "@/lib/db/schema";
-import { runEngagementWave } from "@/lib/sim/engine";
+import { runEngagementWave, applyFollowerChurn } from "@/lib/sim/engine";
 import { generateAmbientPosts } from "@/lib/sim/ambient";
 import { runFunnel } from "@/lib/sim/funnel";
+import { runPersonaDmReplies } from "@/lib/sim/dm";
 import { runHeartbeat, expireStaleProposals } from "@/lib/agents/orchestrator";
 import { logActivity } from "@/lib/agents/log";
 import { runCommunityPass } from "@/lib/agents/communityRunner";
@@ -46,16 +47,26 @@ export async function advanceTicks(worldId: string, n: number): Promise<{ tick: 
         refType: "post",
         refId: post.id,
       });
-      // Track A note: the plan describes two engagement waves (publish + publish+6h
-      // with early-velocity boost), but runEngagementWave is NOT idempotent per
-      // (post, persona) — a second call would duplicate impression/like rows.
-      // Deliberate deviation: run the wave EXACTLY ONCE per post, at publish time.
-      // Second-wave/velocity dynamics arrive with Task A3's engine changes.
-      runEngagementWave(worldId, post.id, t);
+      runEngagementWave(worldId, post.id, t, 1);
+    }
+
+    // (a2) second engagement wave 6h after publish — idempotent per (post, persona);
+    // sample size scales with wave-1 velocity (hidden early-velocity dynamic, Task A3)
+    const secondWaveDue = db
+      .select()
+      .from(posts)
+      .where(and(eq(posts.worldId, worldId), eq(posts.authorType, "brand"), eq(posts.status, "published")))
+      .all()
+      .filter((p) => p.publishedTick === t - 6);
+    for (const post of secondWaveDue) {
+      runEngagementWave(worldId, post.id, t, 2);
     }
 
     // (b) funnel rolls for this tick's profile visits
     await runFunnel(worldId, t);
+
+    // (b2) personas continue (or ghost) their DM conversations
+    await runPersonaDmReplies(worldId, t);
 
     // (c) fill pending persona comment voices
     const pendingVoices = db
@@ -82,8 +93,19 @@ export async function advanceTicks(worldId: string, n: number): Promise<{ tick: 
     // (d) community answers open DM threads
     await runCommunityPass(worldId);
 
-    // (e) day boundary: expire stale proposals, analyst closes outcome windows, coach learns
+    // (e) day boundary: follower churn, expire stale proposals, analyst, coach
     if (t % 24 === 0) {
+      const churned = applyFollowerChurn(worldId, t);
+      if (churned > 0) {
+        logActivity({
+          worldId,
+          tick: t,
+          actor: "system",
+          action: "follower_churn",
+          status: "ok",
+          summary: `${churned} follower(s) left after a heavy posting day`,
+        });
+      }
       expireStaleProposals(worldId, t);
       await runAnalyst(worldId, t);
       await runCoach(worldId, t);

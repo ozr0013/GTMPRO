@@ -109,3 +109,21 @@ Append-only. New entries take the next number; never edit or delete an existing 
 - Context: Commits must be attributable to humans, but the Cursor IDE agent appends a "Co-authored-by: Cursor" trailer to `git commit`.
 - Decision: No AI co-author trailers, ever; agent-made commits go through `scripts/commit-clean.sh`, which builds the commit with git plumbing so nothing is injected; author identity is the personal GitHub account, not a work account.
 - Consequence: `main` history is verified clean of trailers, and the policy is enforceable by script rather than by memory (see CONTRIBUTING.md).
+
+## D19 — Two-wave idempotent engagement with hidden platform dynamics
+
+- Context: A single engagement wave per post left the plan's early-velocity dynamic unimplemented because the wave inserter was not idempotent.
+- Decision: `runEngagementWave(worldId, postId, tick, wave)` excludes personas that already engaged with the post; wave 2 fires 6 ticks after publish on fresh discovery only, sized up by `earlyVelocityBoost` when wave-1 interaction rate ≥ 0.3 and halved otherwise; deep engagers can convert to followers; posting >4 brand posts/day triggers 5% follower churn at the day boundary.
+- Consequence: The agent has real hidden dynamics to discover (velocity, over-posting), audience growth is endogenous, and wave-1 RNG streams are byte-identical to the previous implementation so existing deterministic tests are unaffected.
+
+## D20 — Persona-side DM continuation model
+
+- Context: DM threads stalled after the agent's first reply unless qualification ended immediately, making the meeting-booked funnel depend on a single exchange.
+- Decision: `src/lib/sim/dm.ts` gives each waiting persona a stable seeded roll — reply (after a 2-6 tick delay) or ghost — derived from `dmOpenness` and `skepticism`; a janitor closes threads that exhaust the 3-turn budget.
+- Consequence: Conversations progress across sim time toward `meeting_booked`/`disqualified`/ghosted outcomes, and the community runner needs no changes because threads simply become persona-last again.
+
+## D21 — Stable-identifier rule for all RNG and mock refIds
+
+- Context: The golden run exposed nondeterminism: mock-mode outputs derive their RNG from `callAgent` refIds, and two runners keyed refIds on row UUIDs.
+- Decision: Every RNG stream and every `callAgent` refId must be keyed on stable identifiers — persona handles, post stream keys, turn counts, ticks — never row UUIDs. Activity-log row references may still use UUIDs.
+- Consequence: Same seed ⇒ same simulation, byte for byte; `tests/golden.test.ts` enforces the rule permanently (regenerate deliberately with `UPDATE_GOLDEN=1`).

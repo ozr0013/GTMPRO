@@ -1,5 +1,5 @@
 import { db } from "@/lib/db/client";
-import { dmMessages, dmThreads, proposals, settings, worlds } from "@/lib/db/schema";
+import { dmMessages, dmThreads, personas, proposals, settings, worlds } from "@/lib/db/schema";
 import { callAgent } from "@/lib/agents/models";
 import { SYSTEM } from "@/lib/agents/prompts";
 import { logActivity } from "@/lib/agents/log";
@@ -44,12 +44,15 @@ export async function runCommunityPass(worldId: string): Promise<{ proposalIds: 
     const firstTouch = agentTurns === 0;
     const riskClass = firstTouch ? "sensitive" : "normal";
 
+    // refId keyed on stable identifiers (persona handle + turn), never row UUIDs —
+    // mock-mode rng derives from refId, so UUID keys break same-seed determinism.
+    const persona = db.select().from(personas).where(eq(personas.id, thread.personaId)).get()!;
     const community = await callAgent(
       "community",
       CommunityOutput,
       SYSTEM.community,
-      `Thread ${thread.id}, turnCount=${thread.turnCount}, firstTouch=${firstTouch}. Last persona message: ${last.text}`,
-      { worldSeed: world.seed, refId: `community-${thread.id}-${world.simTick}` },
+      `DM with @${persona.handle}, turnCount=${thread.turnCount}, firstTouch=${firstTouch}. Last persona message: ${last.text}`,
+      { worldSeed: world.seed, refId: `community-${persona.handle}-${thread.turnCount}` },
     );
     if (!community.ok) {
       const qid = randomUUID();

@@ -24,9 +24,11 @@ Suite at last update: **49 tests green across 16 files** (Track A sim + Track B 
 | Task | Status | Notes |
 |---|---|---|
 | A1 world genesis | done | ~100-persona worlds, deterministic per seed |
-| A2 funnel/DM depth | next | persona DM continuation (threads currently stall after one agent reply unless qualified); per-persona caps exist |
-| A3 algorithm dynamics + ambient | partial | ambient content + clock wiring done; early-velocity boost + follower churn remain (needs idempotent second wave) |
-| A4 golden-run regression test | todo | after A2/A3 settle |
+| A2 funnel/DM depth | done | persona DM continuation in sim/dm.ts: reply-or-ghost from dmOpenness/skepticism, 2-6 tick delays, 3-turn janitor |
+| A3 algorithm dynamics + ambient | done | two-wave idempotent engagement, early-velocity boost, follow conversion, >4-posts/day follower churn, ambient content |
+| A4 golden-run regression test | done | tests/golden.test.ts: 5 scripted sim-days vs committed snapshot; regenerate via UPDATE_GOLDEN=1 |
+
+Track A complete.
 
 ## Track B — Agents & learning (owner: Minh)
 

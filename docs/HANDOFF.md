@@ -32,13 +32,13 @@ Interface contracts and module ownership: `docs/ARCHITECTURE.md`. Task specs wit
 
 Team merge landed: Minh's Track B (B1-B5 + 8 test suites) and Omar's Track C (full Mission Control: phone feed, approvals, brain, analytics, onboarding) are on main with track-owner priority; glue seams reconciled and the combined 49-test suite is green.
 
-- **Track A (Anurup)** — A2: persona-side DM continuation (open threads stall after the agent's reply unless qualification ended; personas should reply on later ticks based on dmOpenness/skepticism). A3 remainder: early-velocity boost + follower churn — requires an idempotent second engagement wave (see comment in `src/lib/sim/clock.ts`). A4: golden-run snapshot test guarding the whole sim against drift.
+- **Track A (Anurup)** — COMPLETE. A2 persona DM continuation (`sim/dm.ts`), A3 two-wave engagement with velocity boost + follow conversion + churn (`sim/engine.ts`), A4 golden-run guard (`tests/golden.test.ts` — regenerate deliberately with `UPDATE_GOLDEN=1` after intended sim changes).
 - **Track B (Minh)** — B1-B5 merged. Remaining: image-budget spend guard for the art director, and porting any unique assertions from the pre-merge spine loop test if gaps appear.
 - **Track C (Omar)** — C5 only: hero-post image generation (`artdirector.ts`, gated by image budget) + `scripts/prewarm-demo.ts` producing the committed `demo-snapshot.db` offline fallback.
 - **All hands (submission)** — live-mode validation (`npm run smoke`, one real Claude+GPT run), rehearse `docs/DEMO.md` twice, record the 3-5 min video, final README pass.
 
 ## Known deliberate deviations
 
-- One engagement wave per post at publish time (plan described two waves) — documented in `clock.ts`, resolved by Track A3.
 - Coach digests same-tick human decisions (`>=` window) — required for the rejection→learning cycle at tick 0.
 - `tests/fixtures/world.ts` was intentionally NOT refactored to delegate to `src/lib/sim/build.ts` — the hand-written fixture anchors deterministic tests (see build.ts header).
+- Determinism rule (enforced by the golden run): every RNG stream and every mock-mode `refId` must be keyed on stable identifiers (persona handles, post stream keys, turn counts) — never row UUIDs.

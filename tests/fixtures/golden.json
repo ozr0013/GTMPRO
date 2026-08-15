@@ -1,0 +1,31 @@
+{
+  "posts": {
+    "ambient": 50,
+    "brand": 5
+  },
+  "engagements": {
+    "comment": 68,
+    "follow": 1,
+    "impression": 186,
+    "like": 151,
+    "profile_visit": 16,
+    "save": 37
+  },
+  "funnel": {
+    "dm_started": 1,
+    "link_click": 3,
+    "meeting_booked": 7
+  },
+  "dmThreads": {
+    "qualified": 1
+  },
+  "dmMessages": 8,
+  "proposals": {
+    "executed": 12
+  },
+  "playbookVersionCount": 5,
+  "activeRuleCount": 7,
+  "outcomeReports": 4,
+  "banditObservations": 4,
+  "followers": 7
+}
