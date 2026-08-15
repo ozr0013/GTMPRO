@@ -38,6 +38,7 @@ yarn-error.log*
 flywheel.db
 flywheel.db-*
 public/generated/
+.worktrees/
 
 # vercel
 .vercel

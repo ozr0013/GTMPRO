@@ -13,6 +13,7 @@ import {
   CoachOutput,
   CommunityOutput,
   PersonaVoiceOutput,
+  GenesisOutput,
 } from "@/lib/contracts";
 
 export type AgentRole =
@@ -22,7 +23,8 @@ export type AgentRole =
   | "analyst"
   | "coach"
   | "community"
-  | "persona";
+  | "persona"
+  | "genesis";
 
 // Cross-family assignment is intentional: evaluators (critic/analyst) are a different
 // model family than the actors they judge (self-preference bias mitigation — see README).
@@ -34,6 +36,7 @@ export function modelFor(role: AgentRole) {
     case "strategist":
     case "copywriter":
     case "coach":
+    case "genesis":
       return anthropic(actor);
     case "critic":
     case "analyst":
@@ -142,6 +145,43 @@ function mockFor(role: AgentRole, opts: { worldSeed: string; refId: string }): u
           "Okay this is actually useful.",
           "Trying this tomorrow morning.",
         ]),
+      });
+    case "genesis":
+      // Fully deterministic (ignores the product description in mock mode; live mode
+      // derives everything from it). Sizes sum to 100 personas.
+      return GenesisOutput.parse({
+        brandName: "TestBrew",
+        segments: [
+          {
+            name: "coffee-nerds",
+            size: 34,
+            affinity: { education: 0.9, story: 0.5, meme: 0.6, product: 0.4 },
+            interests: ["brewing-science", "bean-sourcing"],
+          },
+          {
+            name: "busy-pros",
+            size: 33,
+            affinity: { education: 0.4, story: 0.6, meme: 0.3, product: 0.7 },
+            interests: ["morning-routine", "brewing-science"],
+          },
+          {
+            name: "cafe-owners",
+            size: 33,
+            affinity: { education: 0.7, story: 0.4, meme: 0.2, product: 0.9 },
+            interests: ["cafe-economics", "bean-sourcing"],
+          },
+        ],
+        topics: ["brewing-science", "morning-routine", "cafe-economics", "bean-sourcing"],
+        ambientAccounts: [
+          { handle: "daily-drip", bio: "Coffee memes and takes", postingStyle: "meme" },
+          { handle: "roast-report", bio: "Industry news for cafe operators", postingStyle: "education" },
+          { handle: "brewrival", bio: "A competing cold brew brand", postingStyle: "product" },
+        ],
+        seedRules: [
+          { category: "voice", text: "Confident, warm, no hype words." },
+          { category: "content", text: "Hypothesis: education content wins with enthusiasts." },
+          { category: "timing", text: "Hypothesis: mornings perform best." },
+        ],
       });
   }
 }

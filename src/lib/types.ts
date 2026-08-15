@@ -19,9 +19,17 @@ export interface PersonaHidden {
   activeHours: number[]; // hours 0..23
 }
 
+export interface AmbientAccount {
+  handle: string;
+  bio: string;
+  postingStyle: string;
+}
+
 export interface WorldConfig {
   /** hidden ground truth: segment -> archetype -> affinity 0..1 */
   affinity: Record<string, Record<Archetype, number>>;
+  /** competitor/noise accounts that post ambient content (Track A3 consumes) */
+  ambient?: AmbientAccount[];
   algo: {
     earlyVelocityBoost: number; // e.g. 1.3
     overPostPenalty: number; // e.g. 0.6 applied beyond maxOrganicReachPostsPerDay
