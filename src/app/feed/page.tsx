@@ -3,7 +3,6 @@ import { getCurrentWorld } from "../current-world";
 import { getFeed, getFunnelEvents } from "@/lib/db/queries";
 import { getImageBudget } from "@/lib/agents/artdirector";
 import { PhoneFeed } from "../_components/phone-feed";
-import { SectionHead } from "../_components/section-head";
 
 export const dynamic = "force-dynamic";
 
@@ -25,8 +24,8 @@ export default async function FeedPage() {
   const brandCount = posts.filter((p) => p.authorType === "brand").length;
 
   return (
-    <div className="rise grid lg:grid-cols-[minmax(0,1fr)_23rem]">
-      <div className="border-b px-6 py-8 lg:border-r lg:px-10">
+    <div className="rise mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_23rem]">
+      <div className="rounded-3xl bg-card px-6 py-8">
         <PhoneFeed
           posts={posts}
           brandName={world.name}
@@ -35,32 +34,27 @@ export default async function FeedPage() {
         />
       </div>
 
-      <aside>
-        <section className="border-b">
-          <SectionHead
-            title="What the posts caused"
-            note={`${events.length} events`}
-          />
+      <aside className="space-y-4">
+        <section className="rounded-3xl bg-card px-6 py-6">
+          <p className="eyebrow">Downstream</p>
+          <h2 className="display-sm mt-2 text-[1.4rem]">What the posts caused</h2>
           {events.length === 0 ? (
-            <p className="px-6 py-4 text-[0.82rem] text-muted-foreground">
+            <p className="mt-4 text-[0.85rem] text-muted-foreground">
               No funnel events yet. Publish a post and advance the clock.
             </p>
           ) : (
-            <ul className="ruled max-h-[46vh] overflow-y-auto">
+            <ul className="ruled mt-4 max-h-[42vh] overflow-y-auto">
               {events.map((event) => (
-                <li
-                  key={event.id}
-                  className="flex items-baseline gap-3 px-6 py-2.5"
-                >
+                <li key={event.id} className="flex items-baseline gap-3 py-2.5">
                   <span className="w-24 shrink-0 font-mono text-[0.62rem] text-muted-foreground">
                     {event.label}
                   </span>
-                  <span className="min-w-0 flex-1 text-[0.78rem] text-muted-foreground">
+                  <span className="min-w-0 flex-1 text-[0.8rem] text-muted-foreground">
                     <span
                       className={
                         event.kind === "meeting_booked"
-                          ? "font-medium text-signal"
-                          : "font-medium text-foreground"
+                          ? "font-bold text-signal"
+                          : "font-bold text-foreground"
                       }
                     >
                       @{event.handle}
@@ -73,33 +67,31 @@ export default async function FeedPage() {
           )}
         </section>
 
-        <section className="border-b">
-          <SectionHead title="Reading the feed" />
-          <dl className="ruled">
-            <div className="px-6 py-3">
-              <dt className="eyebrow">Image budget</dt>
-              <dd className="mt-1.5 flex items-baseline gap-2">
-                <span className="figure text-[1.5rem]">{imageBudget.used}</span>
-                <span className="font-mono text-[0.72rem] text-muted-foreground">
-                  / {imageBudget.total} spent
-                </span>
-              </dd>
-            </div>
-            <div className="px-6 py-3">
-              <dt className="eyebrow">Published</dt>
-              <dd className="mt-1.5 font-mono text-[0.75rem] text-muted-foreground">
-                {brandCount} brand · {posts.length - brandCount} ambient
-              </dd>
-            </div>
-            <div className="px-6 py-3 text-[0.78rem] leading-relaxed text-muted-foreground">
-              Posts show their creative brief until the art director generates a hero.
-              In <span className="font-mono text-[0.72rem]">MODEL_MODE=mock</span> the
-              hero is a seeded local render, so the demo runs with no API keys.
-            </div>
-            <div className="px-6 py-3 text-[0.78rem] leading-relaxed text-muted-foreground">
-              Double-tap a card to like it. Counts animate whenever you advance the clock.
-            </div>
-          </dl>
+        <section className="rounded-3xl bg-card px-6 py-6">
+          <p className="eyebrow">Image budget</p>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="figure text-[2rem]">{imageBudget.used}</span>
+            <span className="font-mono text-[0.75rem] text-muted-foreground">
+              / {imageBudget.total} spent
+            </span>
+          </div>
+          <div className="mt-4 h-2 overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-signal"
+              style={{
+                width: `${imageBudget.total > 0 ? (imageBudget.used / imageBudget.total) * 100 : 0}%`,
+              }}
+            />
+          </div>
+          <p className="mt-4 text-[0.78rem] leading-relaxed text-muted-foreground">
+            {brandCount} brand posts · {posts.length - brandCount} ambient. Posts show their
+            creative brief until the art director generates a hero. In{" "}
+            <span className="font-mono text-[0.72rem]">MODEL_MODE=mock</span> the hero is a seeded
+            local render, so the demo runs with no API keys.
+          </p>
+          <p className="mt-3 text-[0.78rem] leading-relaxed text-muted-foreground">
+            Double-tap a card to like it. Counts animate whenever you advance the clock.
+          </p>
         </section>
       </aside>
     </div>

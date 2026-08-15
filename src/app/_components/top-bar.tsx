@@ -11,33 +11,28 @@ import {
   togglePauseAction,
 } from "@/app/actions";
 import { Switch } from "@/components/ui/switch";
-import { cn } from "@/lib/utils";
 import { TICKS_PER_DAY } from "@/lib/sim/time";
 
 const JUMPS = [
   { label: "+1h", ticks: 1 },
   { label: "+6h", ticks: 6 },
-  { label: "+1d", ticks: TICKS_PER_DAY },
+  { label: "+1 day", ticks: TICKS_PER_DAY },
 ] as const;
 
-/** Masthead readout: label above value, hairline-separated. */
-function Readout({
-  label,
-  children,
-  className,
-}: {
-  label: string;
-  children: React.ReactNode;
-  className?: string;
-}) {
+function Readout({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
-    <div className={cn("px-5 py-2.5", className)}>
+    <div className="shrink-0">
       <div className="eyebrow">{label}</div>
-      <div className="mt-0.5 font-mono text-[0.82rem] tabular-nums">{children}</div>
+      <div
+        className={`mt-1 font-mono text-[0.85rem] tabular-nums ${accent ? "text-signal" : ""}`}
+      >
+        {value}
+      </div>
     </div>
   );
 }
 
+/** Control deck: a white pill card holding the sim clock, autonomy and time jumps. */
 export function TopBar({ world, worlds }: { world: WorldSummary; worlds: WorldSummary[] }) {
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -49,87 +44,74 @@ export function TopBar({ world, worlds }: { world: WorldSummary; worlds: WorldSu
     });
 
   return (
-    <header className="border-b">
-      <div className="flex flex-wrap items-stretch divide-x">
-        <div className="flex min-w-0 flex-1 items-center px-5 py-2.5">
-          {worlds.length > 1 ? (
-            <select
-              aria-label="Switch world"
-              value={world.id}
-              onChange={(e) => run(() => selectWorldAction(e.target.value))}
-              className="display -ml-0.5 max-w-full truncate border-none bg-transparent pr-5 text-[1.35rem] outline-none"
-            >
-              {worlds.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <span className="display truncate text-[1.35rem]">{world.name}</span>
-          )}
-        </div>
+    <div className="px-4 pt-4 md:px-8">
+      <div className="flex flex-wrap items-center gap-x-8 gap-y-4 rounded-3xl bg-card px-6 py-4">
+        {worlds.length > 1 ? (
+          <select
+            aria-label="Switch world"
+            value={world.id}
+            onChange={(e) => run(() => selectWorldAction(e.target.value))}
+            className="display-sm max-w-52 shrink-0 truncate border-none bg-transparent pr-6 text-[1.25rem] outline-none"
+          >
+            {worlds.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.name}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span className="display-sm shrink-0 text-[1.25rem]">{world.name}</span>
+        )}
 
-        <Readout label="Sim clock">
-          {/* the clock is the instrument's heartbeat — give it the accent */}
-          <span className="text-signal">{world.simLabel}</span>
-        </Readout>
-        <Readout label="Playbook" className="hidden sm:block">
-          v{world.playbookVersion}
-        </Readout>
-        <Readout label="Followers" className="hidden sm:block">
-          {world.followers}
-        </Readout>
-        <Readout label="Mode" className="hidden md:block">
-          <span className={world.paused ? "text-destructive" : undefined}>
-            {world.paused ? "PAUSED" : world.mode === "autopilot" ? "AUTO" : "PROPOSE"}
-          </span>
-        </Readout>
-      </div>
+        <Readout label="Sim clock" value={world.simLabel} accent />
+        <Readout label="Playbook" value={`v${world.playbookVersion}`} />
+        <Readout label="Followers" value={String(world.followers)} />
+        <Readout
+          label="Mode"
+          value={world.paused ? "HALTED" : world.mode === "autopilot" ? "AUTO" : "PROPOSE"}
+        />
 
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t px-5 py-2">
-        <label className="flex items-center gap-2">
-          <Switch
-            size="sm"
-            checked={world.mode === "autopilot"}
-            disabled={pending}
-            onCheckedChange={(checked) =>
-              run(() => setModeAction(world.id, checked ? "autopilot" : "propose"))
-            }
-          />
-          <span className="eyebrow">Autopilot</span>
-        </label>
+        <div className="ml-auto flex flex-wrap items-center gap-x-5 gap-y-3">
+          <label className="flex items-center gap-2">
+            <Switch
+              size="sm"
+              checked={world.mode === "autopilot"}
+              disabled={pending}
+              onCheckedChange={(checked) =>
+                run(() => setModeAction(world.id, checked ? "autopilot" : "propose"))
+              }
+            />
+            <span className="eyebrow">Autopilot</span>
+          </label>
 
-        {/* kill switch — paused blocks the heartbeat outright */}
-        <label className="flex items-center gap-2">
-          <Switch
-            size="sm"
-            checked={world.paused}
-            disabled={pending}
-            onCheckedChange={() => run(() => togglePauseAction(world.id))}
-          />
-          <span className="eyebrow">Halt</span>
-        </label>
+          {/* kill switch — paused blocks the heartbeat outright */}
+          <label className="flex items-center gap-2">
+            <Switch
+              size="sm"
+              checked={world.paused}
+              disabled={pending}
+              onCheckedChange={() => run(() => togglePauseAction(world.id))}
+            />
+            <span className="eyebrow">Halt</span>
+          </label>
 
-        <div className="ml-auto flex items-center gap-5">
           <button
             type="button"
             disabled={pending || world.paused}
             onClick={() => run(() => heartbeatAction(world.id))}
-            className="eyebrow border-b border-signal pb-0.5 text-signal transition-opacity hover:opacity-60 disabled:pointer-events-none disabled:opacity-30"
+            className="rounded-full bg-foreground px-5 py-2.5 text-[0.7rem] font-bold tracking-widest text-background uppercase transition-opacity hover:opacity-80 disabled:opacity-30"
           >
             {pending ? "Running…" : "Run heartbeat"}
           </button>
 
-          <div className="flex items-center gap-1">
-            <span className="eyebrow mr-1">Advance</span>
+          <div className="flex items-center gap-1.5 rounded-full bg-muted p-1">
             {JUMPS.map(({ label, ticks }) => (
               <button
                 key={label}
                 type="button"
                 disabled={pending}
                 onClick={() => run(() => advanceTicksAction(world.id, ticks))}
-                className="border px-2 py-1 font-mono text-[0.7rem] transition-colors hover:bg-foreground hover:text-background disabled:pointer-events-none disabled:opacity-40"
+                className="rounded-full px-3 py-1.5 font-mono text-[0.7rem] transition-colors hover:bg-card disabled:opacity-40"
               >
                 {label}
               </button>
@@ -137,6 +119,6 @@ export function TopBar({ world, worlds }: { world: WorldSummary; worlds: WorldSu
           </div>
         </div>
       </div>
-    </header>
+    </div>
   );
 }
