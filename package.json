@@ -14,6 +14,7 @@
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:seed": "tsx scripts/seed-demo-world.ts",
+    "prewarm": "tsx scripts/prewarm-demo.ts",
     "smoke": "tsx scripts/smoke-models.ts"
   },
   "dependencies": {

@@ -1,16 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import type { FeedPost } from "@/lib/db/queries";
 import type { Archetype } from "@/lib/types";
+import { generateHeroImageAction } from "@/app/actions";
 import { CountUp } from "./count-up";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   BookOpenIcon,
   BookmarkIcon,
   HeartIcon,
+  ImageIcon,
   LaughIcon,
+  Loader2Icon,
   MessageCircleIcon,
   PackageIcon,
   SparklesIcon,
@@ -27,10 +32,12 @@ export function PhoneFeed({
   posts,
   brandName,
   followers,
+  imageBudgetRemaining,
 }: {
   posts: FeedPost[];
   brandName: string;
   followers: number;
+  imageBudgetRemaining: number;
 }) {
   return (
     <div className="mx-auto w-full max-w-[400px]">
@@ -56,7 +63,14 @@ export function PhoneFeed({
               Nothing published yet. Approve a proposal, then advance the clock.
             </p>
           ) : (
-            posts.map((post) => <PostCard key={post.id} post={post} brandName={brandName} />)
+            posts.map((post) => (
+              <PostCard
+                key={post.id}
+                post={post}
+                brandName={brandName}
+                imageBudgetRemaining={imageBudgetRemaining}
+              />
+            ))
           )}
         </div>
       </div>
@@ -64,12 +78,30 @@ export function PhoneFeed({
   );
 }
 
-function PostCard({ post, brandName }: { post: FeedPost; brandName: string }) {
+function PostCard({
+  post,
+  brandName,
+  imageBudgetRemaining,
+}: {
+  post: FeedPost;
+  brandName: string;
+  imageBudgetRemaining: number;
+}) {
   const [showComments, setShowComments] = useState(false);
   const [liked, setLiked] = useState(false);
   const [burst, setBurst] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const [generating, startGenerating] = useTransition();
+  const router = useRouter();
   const style = ARCHETYPE_STYLE[post.archetype];
   const Icon = style.icon;
+
+  const generate = () =>
+    startGenerating(async () => {
+      const result = await generateHeroImageAction(post.id);
+      setImageError(result.ok ? null : (result.reason ?? "generation failed"));
+      router.refresh();
+    });
 
   // double-tap is the platform-native gesture; a click on the art counts as one tap
   const handleDoubleClick = () => {
@@ -102,22 +134,53 @@ function PostCard({ post, brandName }: { post: FeedPost; brandName: string }) {
         </Badge>
       </header>
 
-      {/* placeholder art: the creative brief rendered as the image the art director would make */}
+      {/* the art director's hero image once generated; until then the creative brief
+          stands in for the image it describes */}
       <div
         onDoubleClick={handleDoubleClick}
         className={cn(
-          "relative flex aspect-square cursor-pointer select-none items-center justify-center bg-gradient-to-br p-6 text-center",
-          style.gradient,
+          "relative flex aspect-square cursor-pointer select-none items-center justify-center overflow-hidden text-center",
+          !post.imageUrl && `bg-gradient-to-br p-6 ${style.gradient}`,
         )}
       >
-        <Icon className="absolute top-3 left-3 size-4 text-neutral-900/40" />
-        <p className="font-heading text-sm leading-snug font-medium text-neutral-900/80">
-          {post.creativeBrief}
-        </p>
+        {post.imageUrl ? (
+          // plain img: generated files vary (svg in mock, png/webp live) and are
+          // local, so there is nothing for the image optimizer to do
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={post.imageUrl}
+            alt={post.creativeBrief}
+            className="size-full object-cover"
+          />
+        ) : (
+          <>
+            <Icon className="absolute top-3 left-3 size-4 text-neutral-900/40" />
+            <p className="font-heading text-sm leading-snug font-medium text-neutral-900/80">
+              {post.creativeBrief}
+            </p>
+          </>
+        )}
         {burst && (
           <HeartIcon className="pointer-events-none absolute size-24 animate-ping fill-white text-white/90" />
         )}
       </div>
+
+      {post.authorType === "brand" && !post.imageUrl && (
+        <div className="flex items-center gap-2 px-3 pt-2">
+          <Button
+            size="xs"
+            variant="outline"
+            disabled={generating || imageBudgetRemaining <= 0}
+            onClick={generate}
+          >
+            {generating ? <Loader2Icon className="animate-spin" /> : <ImageIcon />}
+            Generate hero image
+          </Button>
+          <span className="text-[10px] text-muted-foreground">
+            {imageError ?? `${imageBudgetRemaining} left in budget`}
+          </span>
+        </div>
+      )}
 
       <div className="flex items-center gap-4 px-3 pt-2.5">
         <button

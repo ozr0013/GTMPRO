@@ -34,7 +34,24 @@ export async function runCommunityPass(worldId: string): Promise<{ proposalIds: 
 
   const proposalIds: string[] = [];
 
+  // The clock runs this every tick, but a pending proposal adds no agent message,
+  // so the thread stays eligible and would be re-proposed every sim hour until a
+  // human acts — flooding approvals (and, in live mode, burning a call per tick).
+  // One outstanding reply per thread is the invariant.
+  const awaitingDecision = new Set(
+    db
+      .select()
+      .from(proposals)
+      .where(and(eq(proposals.worldId, worldId), eq(proposals.kind, "dm_reply")))
+      .all()
+      .filter((p) => p.status === "pending")
+      .map((p) => (p.payload as { threadId?: string }).threadId)
+      .filter((id): id is string => Boolean(id)),
+  );
+
   for (const thread of threads) {
+    if (awaitingDecision.has(thread.id)) continue;
+
     const msgs = db.select().from(dmMessages).where(eq(dmMessages.threadId, thread.id)).all();
     if (msgs.length === 0) continue;
     const last = [...msgs].sort((a, b) => a.tick - b.tick)[msgs.length - 1];

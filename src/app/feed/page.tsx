@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentWorld } from "../current-world";
 import { getFeed, getFunnelEvents } from "@/lib/db/queries";
+import { getImageBudget } from "@/lib/agents/artdirector";
 import { PhoneFeed } from "../_components/phone-feed";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -21,11 +22,17 @@ export default async function FeedPage() {
 
   const posts = getFeed(world.id);
   const events = getFunnelEvents(world.id, 20);
+  const imageBudget = getImageBudget(world.id);
 
   return (
     <div className="grid gap-6 p-6 lg:grid-cols-[minmax(0,1fr)_320px]">
       <div>
-        <PhoneFeed posts={posts} brandName={world.name} followers={world.followers} />
+        <PhoneFeed
+          posts={posts}
+          brandName={world.name}
+          followers={world.followers}
+          imageBudgetRemaining={imageBudget.remaining}
+        />
       </div>
 
       <aside className="space-y-4">
@@ -58,8 +65,12 @@ export default async function FeedPage() {
         <Card className="gap-2 p-4 text-xs text-muted-foreground">
           <h2 className="font-heading text-sm font-medium text-foreground">Reading the feed</h2>
           <p>
-            Art is a placeholder rendering of each post&apos;s creative brief — the art director
-            (Task C5) swaps in generated hero images.
+            Posts show their creative brief until the art director generates a hero image —{" "}
+            {imageBudget.used}/{imageBudget.total} of the image budget spent.
+          </p>
+          <p>
+            In <code className="font-mono">MODEL_MODE=mock</code> the hero is a seeded local render,
+            so the demo works with no API keys.
           </p>
           <p>Double-tap a card to like it. Counts animate whenever you advance the sim clock.</p>
         </Card>

@@ -11,6 +11,7 @@ import { settings, proposals } from "@/lib/db/schema";
 import { advanceTicks } from "@/lib/sim/clock";
 import { generateWorld } from "@/lib/sim/genesis";
 import { decideProposal, runHeartbeat } from "@/lib/agents/orchestrator";
+import { generateHeroImage } from "@/lib/agents/artdirector";
 import { logActivity } from "@/lib/agents/log";
 import { rollbackTo } from "@/lib/learning/playbook";
 import { getWorld } from "@/lib/db/queries";
@@ -92,6 +93,14 @@ export async function rollbackAction(worldId: string, targetVersion: number): Pr
     refId: String(targetVersion),
   });
   refreshAll();
+}
+
+export async function generateHeroImageAction(
+  postId: string,
+): Promise<{ ok: boolean; reason?: string }> {
+  const result = await generateHeroImage(postId);
+  refreshAll();
+  return { ok: result.ok, reason: result.reason };
 }
 
 export async function selectWorldAction(worldId: string): Promise<void> {
