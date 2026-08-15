@@ -45,6 +45,19 @@ describe("ambient content", () => {
     }
   });
 
+  it("integrates with the sim clock: a genesis world accrues ambient posts over a day", async () => {
+    const { advanceTicks } = await import("@/lib/sim/clock");
+    const worldId = await ambientWorld("amb-clock-seed");
+    await advanceTicks(worldId, 24);
+    const ambientRows = db
+      .select()
+      .from(posts)
+      .where(and(eq(posts.worldId, worldId), eq(posts.authorType, "ambient")))
+      .all();
+    expect(ambientRows.length).toBeGreaterThanOrEqual(6);
+    expect(ambientRows.length).toBeLessThanOrEqual(12);
+  });
+
   it("schedules are deterministic per seed and vary by day", async () => {
     const a = ambientScheduleFor("seed-x", "daily-drip", 0);
     const b = ambientScheduleFor("seed-x", "daily-drip", 0);

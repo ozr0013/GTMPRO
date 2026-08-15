@@ -4,6 +4,7 @@
 import { db } from "@/lib/db/client";
 import { worlds, posts, engagements, personas } from "@/lib/db/schema";
 import { runEngagementWave } from "@/lib/sim/engine";
+import { generateAmbientPosts } from "@/lib/sim/ambient";
 import { runFunnel } from "@/lib/sim/funnel";
 import { runHeartbeat, logActivity } from "@/lib/agents/orchestrator";
 import { runCommunity } from "@/lib/agents/communityRunner";
@@ -20,6 +21,10 @@ export async function advanceTicks(worldId: string, n: number): Promise<{ tick: 
 
   for (let t = start + 1; t <= start + n; t++) {
     db.update(worlds).set({ simTick: t }).where(eq(worlds.id, worldId)).run();
+
+    // (a0) ambient/competitor accounts post on their own schedules (feed noise;
+    // no engagement waves — worlds without config.ambient produce none)
+    generateAmbientPosts(worldId, t);
 
     // (a) publish due scheduled posts
     const due = db
