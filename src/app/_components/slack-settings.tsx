@@ -118,8 +118,10 @@ export function SlackSettings({ worldId, enabled, target, kinds, readiness }: Sl
           disabled={pending}
           className="rounded-xl"
         />
-        <p className="text-[0.78rem] text-muted-foreground">
-          Handles and emails are resolved to a Slack user id. Leave blank to use the{" "}
+        <p className="text-[0.78rem] leading-relaxed text-muted-foreground">
+          Handles and emails are resolved to a Slack user id. A personal address (gmail and
+          the like) works <span className="italic">if it is the email on your Slack profile</span>
+          {" "}— it is your Slack account being looked up, not your mailbox. Leave blank to use the{" "}
           <span className="font-mono text-[0.72rem]">SLACK_DM_TARGET</span> default, or when
           posting to a webhook channel.
         </p>

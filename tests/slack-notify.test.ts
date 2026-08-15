@@ -3,7 +3,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { classify, enabledKinds, toNotifyEvent } from "@/lib/notify/activityNotifier";
-import { buildSlackMessage, isSlackEnabled } from "@/lib/notify/slack";
+import { buildSlackMessage, isSlackEnabled, targetKind } from "@/lib/notify/slack";
 
 const ENV_KEYS = ["SLACK_BOT_TOKEN", "SLACK_DM_TARGET", "SLACK_WEBHOOK_URL", "SLACK_NOTIFY"];
 const saved: Record<string, string | undefined> = {};
@@ -44,6 +44,29 @@ describe("slack is opt-in", () => {
     expect(isSlackEnabled()).toBe(false);
     process.env.SLACK_DM_TARGET = "@omar";
     expect(isSlackEnabled()).toBe(true);
+  });
+});
+
+describe("how the 'send to' value is interpreted", () => {
+  it("accepts a personal email such as gmail", () => {
+    expect(targetKind("omar@gmail.com")).toBe("email");
+    expect(targetKind("omar.rizwan+flywheel@gmail.com")).toBe("email");
+    expect(targetKind("you@company.co.uk")).toBe("email");
+  });
+
+  it("treats a leading @ as a handle even when it contains dots", () => {
+    // the old "has @ and ." heuristic sent @omar.rizwan to the email lookup
+    expect(targetKind("@omar.rizwan")).toBe("handle");
+    expect(targetKind("@omar")).toBe("handle");
+  });
+
+  it("passes Slack ids straight through", () => {
+    expect(targetKind("U01ABCDEFG")).toBe("id");
+    expect(targetKind("C01ABCDEFG")).toBe("id");
+  });
+
+  it("falls back to handle for anything else", () => {
+    expect(targetKind("omar")).toBe("handle");
   });
 });
 

@@ -111,18 +111,38 @@ export function buildSlackMessage(event: NotifyEvent, baseUrl = slackConfig().ba
   return { text: `${event.title} — ${event.worldName}`, blocks };
 }
 
+/**
+ * Which kind of thing the user typed. A leading "@" always means a handle:
+ * Slack usernames may contain dots (@omar.rizwan), so "has @ and ." would
+ * misroute them to the email lookup and fail.
+ */
+export function targetKind(raw: string): "id" | "handle" | "email" {
+  const target = raw.trim();
+  if (/^[UWC][A-Z0-9]{6,}$/i.test(target)) return "id";
+  if (target.startsWith("@")) return "handle";
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(target)) return "email";
+  return "handle";
+}
+
 /** Resolve @handle / email to a Slack user id; ids and channel ids pass through. */
 async function resolveTarget(token: string, target: string): Promise<string> {
-  if (/^[UWC][A-Z0-9]{6,}$/i.test(target)) return target;
+  const kind = targetKind(target);
+  if (kind === "id") return target;
 
-  if (target.includes("@") && target.includes(".")) {
+  if (kind === "email") {
     const res = await fetch(
       `https://slack.com/api/users.lookupByEmail?email=${encodeURIComponent(target)}`,
       { headers: { Authorization: `Bearer ${token}` } },
     );
     const json = (await res.json()) as { ok: boolean; user?: { id: string }; error?: string };
     if (json.ok && json.user) return json.user.id;
-    throw new Error(`users.lookupByEmail failed: ${json.error ?? "unknown"}`);
+    // users_not_found here almost always means the address is not the one on the
+    // Slack profile — a personal gmail only resolves if you joined the workspace with it
+    throw new Error(
+      json.error === "users_not_found"
+        ? `no Slack account uses ${target} — use the email on your Slack profile, your @handle, or your Uxxxx id`
+        : `users.lookupByEmail failed: ${json.error ?? "unknown"}`,
+    );
   }
 
   // @handle -> scan the member list (users.list needs users:read)
