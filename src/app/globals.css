@@ -4,12 +4,19 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+  Mission Control reads as an editorial instrument, not a SaaS dashboard:
+  bone paper ground, warm near-black ink, hairline rules instead of floating
+  cards, a high-contrast serif for display against a technical mono for
+  metadata. Sharp corners throughout — the radius scale is deliberately ~0.
+*/
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-sans: var(--font-instrument-sans);
+  --font-mono: var(--font-plex-mono);
+  --font-heading: var(--font-instrument-serif);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -39,82 +46,100 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  --color-signal: var(--signal);
+  --color-positive: var(--positive);
+  --color-caution: var(--caution);
+  --radius-sm: 1px;
+  --radius-md: 2px;
+  --radius-lg: 2px;
+  --radius-xl: 3px;
+  --radius-2xl: 3px;
+  --radius-3xl: 4px;
+  --radius-4xl: 4px;
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  /* bone paper, warm ink — never pure white on pure black */
+  --background: oklch(0.968 0.006 83);
+  --foreground: oklch(0.205 0.012 55);
+  --card: oklch(0.985 0.005 85);
+  --card-foreground: oklch(0.205 0.012 55);
+  --popover: oklch(0.985 0.005 85);
+  --popover-foreground: oklch(0.205 0.012 55);
+  --primary: oklch(0.205 0.012 55);
+  --primary-foreground: oklch(0.975 0.006 85);
+  --secondary: oklch(0.935 0.008 83);
+  --secondary-foreground: oklch(0.265 0.012 55);
+  --muted: oklch(0.938 0.008 83);
+  --muted-foreground: oklch(0.505 0.012 60);
+  --accent: oklch(0.928 0.011 80);
+  --accent-foreground: oklch(0.235 0.012 55);
+  --destructive: oklch(0.505 0.155 33);
+  --border: oklch(0.878 0.011 78);
+  --input: oklch(0.878 0.011 78);
+  --ring: oklch(0.55 0.15 38);
+  --radius: 2px;
+
+  /* one accent — a warm vermilion that reads as ink, not as a gradient */
+  --signal: oklch(0.555 0.168 38);
+  --positive: oklch(0.475 0.085 152);
+  --caution: oklch(0.605 0.115 75);
+
+  --chart-1: oklch(0.555 0.168 38);
+  --chart-2: oklch(0.345 0.045 245);
+  --chart-3: oklch(0.475 0.085 152);
+  --chart-4: oklch(0.605 0.115 75);
+  --chart-5: oklch(0.42 0.02 60);
+
+  --sidebar: oklch(0.947 0.009 83);
+  --sidebar-foreground: oklch(0.205 0.012 55);
+  --sidebar-primary: oklch(0.205 0.012 55);
+  --sidebar-primary-foreground: oklch(0.975 0.006 85);
+  --sidebar-accent: oklch(0.902 0.012 80);
+  --sidebar-accent-foreground: oklch(0.205 0.012 55);
+  --sidebar-border: oklch(0.878 0.011 78);
+  --sidebar-ring: oklch(0.55 0.15 38);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  /* ink on warm charcoal — the same paper, at night */
+  --background: oklch(0.178 0.008 62);
+  --foreground: oklch(0.935 0.008 85);
+  --card: oklch(0.212 0.009 62);
+  --card-foreground: oklch(0.935 0.008 85);
+  --popover: oklch(0.212 0.009 62);
+  --popover-foreground: oklch(0.935 0.008 85);
+  --primary: oklch(0.935 0.008 85);
+  --primary-foreground: oklch(0.192 0.009 62);
+  --secondary: oklch(0.268 0.01 62);
+  --secondary-foreground: oklch(0.935 0.008 85);
+  --muted: oklch(0.258 0.01 62);
+  --muted-foreground: oklch(0.688 0.011 72);
+  --accent: oklch(0.288 0.012 62);
+  --accent-foreground: oklch(0.955 0.008 85);
+  --destructive: oklch(0.652 0.155 33);
+  --border: oklch(0.995 0 0 / 13%);
+  --input: oklch(0.995 0 0 / 16%);
+  --ring: oklch(0.63 0.145 40);
+
+  --signal: oklch(0.665 0.158 40);
+  --positive: oklch(0.665 0.095 152);
+  --caution: oklch(0.755 0.115 78);
+
+  --chart-1: oklch(0.665 0.158 40);
+  --chart-2: oklch(0.685 0.075 240);
+  --chart-3: oklch(0.665 0.095 152);
+  --chart-4: oklch(0.755 0.115 78);
+  --chart-5: oklch(0.72 0.015 70);
+
+  --sidebar: oklch(0.198 0.009 62);
+  --sidebar-foreground: oklch(0.935 0.008 85);
+  --sidebar-primary: oklch(0.935 0.008 85);
+  --sidebar-primary-foreground: oklch(0.192 0.009 62);
+  --sidebar-accent: oklch(0.282 0.012 62);
+  --sidebar-accent-foreground: oklch(0.955 0.008 85);
+  --sidebar-border: oklch(0.995 0 0 / 13%);
+  --sidebar-ring: oklch(0.63 0.145 40);
 }
 
 @layer base {
@@ -123,8 +148,86 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "kern" 1, "liga" 1, "cv05" 1;
   }
   html {
     @apply font-sans;
+  }
+  /* numbers are data here — never let them reflow as they tick */
+  .tabular-nums,
+  [class*="tabular"] {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/*
+  Paper grain. Barely there (2.5%), but it stops the large bone fields from
+  reading as flat #fff and is the main reason the UI feels printed.
+*/
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.dark body::before {
+  opacity: 0.04;
+}
+
+/* ── editorial primitives ─────────────────────────────────────────────── */
+
+/* Section markers: small, uppercase, wide-tracked mono. Used everywhere a
+   generic dashboard would reach for a bold sans heading. */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--muted-foreground);
+  font-weight: 500;
+}
+
+/* Display numerals — the serif at large sizes, tightened. */
+.figure {
+  font-family: var(--font-heading);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 0.95;
+}
+
+.display {
+  font-family: var(--font-heading);
+  letter-spacing: -0.015em;
+  line-height: 1.05;
+  font-weight: 400;
+}
+
+/* A hairline that spans a row and gets out of the way. */
+.hairline {
+  border-top: 1px solid var(--border);
+}
+
+/* Ruled list: rows separated by hairlines, no card chrome. */
+.ruled > * + * {
+  border-top: 1px solid var(--border);
+}
+
+/* Understated focus ring that matches the ink palette. */
+@media (prefers-reduced-motion: no-preference) {
+  .rise {
+    animation: rise 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
   }
 }

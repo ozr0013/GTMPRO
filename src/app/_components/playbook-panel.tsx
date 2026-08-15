@@ -4,10 +4,6 @@ import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { PlaybookView, PlaybookVersionView } from "@/lib/db/queries";
 import { rollbackAction } from "@/app/actions";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { UndoIcon } from "lucide-react";
 
 const CATEGORY_ORDER = ["voice", "content", "timing", "audience", "guardrail"];
 
@@ -39,104 +35,116 @@ export function PlaybookPanel({
   const categories = CATEGORY_ORDER.filter((c) => playbook.rules.some((r) => r.category === c));
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-      <div className="space-y-4">
-        <div>
-          <h3 className="font-heading text-sm font-medium">
-            Active rules — v{playbook.version}
-          </h3>
-          <p className="text-xs text-muted-foreground">
-            {playbook.rules.length} rules. Every proposal must cite these by key.
-          </p>
+    <div className="grid lg:grid-cols-[minmax(0,1fr)_24rem]">
+      {/* the playbook, set like a standards document */}
+      <div className="lg:border-r">
+        <div className="flex items-baseline justify-between border-b px-6 py-3 md:px-10">
+          <h3 className="eyebrow">Active rules</h3>
+          <span className="font-mono text-[0.7rem] text-muted-foreground">
+            v{playbook.version} · {playbook.rules.length} rules
+          </span>
         </div>
 
         {categories.map((category) => (
-          <div key={category}>
-            <h4 className="mb-1.5 text-xs font-medium text-muted-foreground uppercase">{category}</h4>
-            <div className="space-y-1.5">
-              {playbook.rules
-                .filter((r) => r.category === category)
-                .map((rule) => (
-                  <details key={rule.id} className="group rounded-lg border px-3 py-2">
-                    <summary className="flex cursor-pointer list-none items-start gap-2 text-sm">
-                      <Badge variant="secondary" className="mt-0.5 shrink-0 font-mono text-[10px]">
-                        {rule.ruleKey}
-                      </Badge>
-                      <span className="flex-1">{rule.text}</span>
-                      <span className="shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
-                        {rule.confidence.toFixed(2)}
-                      </span>
-                    </summary>
-                    <div className="mt-2 border-t pt-2 text-xs text-muted-foreground">
-                      <div>{SOURCE_LABEL[rule.evidence.sourceType] ?? rule.evidence.sourceType}</div>
-                      {rule.evidence.refs.length > 0 && (
-                        <div className="mt-1 font-mono text-[10px]">
-                          refs: {rule.evidence.refs.map((r) => r.slice(0, 8)).join(", ")}
-                        </div>
-                      )}
-                    </div>
-                  </details>
-                ))}
+          <section key={category}>
+            <div className="border-b bg-muted/40 px-6 py-1.5 md:px-10">
+              <h4 className="eyebrow">{category}</h4>
             </div>
-          </div>
+            {playbook.rules
+              .filter((r) => r.category === category)
+              .map((rule) => (
+                <details key={rule.id} className="group border-b">
+                  <summary className="flex cursor-pointer list-none items-baseline gap-4 px-6 py-3 hover:bg-muted/40 md:px-10">
+                    <span className="w-24 shrink-0 font-mono text-[0.65rem] text-signal">
+                      {rule.ruleKey}
+                    </span>
+                    <span className="flex-1 text-[0.88rem] leading-relaxed">{rule.text}</span>
+                    <span className="shrink-0 font-mono text-[0.65rem] text-muted-foreground tabular-nums">
+                      {rule.confidence.toFixed(2)}
+                    </span>
+                  </summary>
+                  <div className="bg-muted/30 px-6 py-3 pl-[calc(1.5rem+7rem)] md:px-10 md:pl-[calc(2.5rem+7rem)]">
+                    <p className="eyebrow">{SOURCE_LABEL[rule.evidence.sourceType] ?? rule.evidence.sourceType}</p>
+                    {rule.evidence.refs.length > 0 && (
+                      <p className="mt-1 font-mono text-[0.62rem] text-muted-foreground">
+                        refs {rule.evidence.refs.map((r) => r.slice(0, 8)).join(" · ")}
+                      </p>
+                    )}
+                  </div>
+                </details>
+              ))}
+          </section>
         ))}
       </div>
 
-      <div className="space-y-3">
-        <h3 className="font-heading text-sm font-medium">Version timeline</h3>
+      {/* version timeline — an editorial changelog */}
+      <aside>
+        <div className="border-b px-6 py-3">
+          <h3 className="eyebrow">Version timeline</h3>
+        </div>
         {[...history].reverse().map((version) => (
-          <Card key={version.versionId} className="gap-2 p-3">
-            <div className="flex items-center gap-2">
-              <Badge variant={version.version === playbook.version ? "default" : "outline"}>
+          <article key={version.versionId} className="border-b px-6 py-4">
+            <div className="flex items-baseline gap-2.5">
+              <span
+                className={`figure text-[1.35rem] ${
+                  version.version === playbook.version ? "text-signal" : ""
+                }`}
+              >
                 v{version.version}
-              </Badge>
-              <span className="text-[10px] text-muted-foreground">{version.authorType}</span>
-              <span className="ml-auto text-[10px] text-muted-foreground">{version.createdLabel}</span>
+              </span>
+              <span className="eyebrow">{version.authorType}</span>
+              <span className="ml-auto font-mono text-[0.62rem] text-muted-foreground">
+                {version.createdLabel}
+              </span>
             </div>
-            <p className="text-xs">{version.changeSummary}</p>
+            <p className="mt-1.5 text-[0.8rem] text-muted-foreground">{version.changeSummary}</p>
 
-            {version.added.map((rule) => (
-              <div
-                key={`add-${rule.ruleKey}`}
-                className="rounded border-l-2 border-emerald-500 bg-emerald-500/5 px-2 py-1 text-[11px]"
-              >
-                <span className="font-medium text-emerald-700 dark:text-emerald-400">added</span>{" "}
-                {rule.text}
-              </div>
-            ))}
-            {version.amended.map((rule) => (
-              <div
-                key={`amend-${rule.ruleKey}`}
-                className="rounded border-l-2 border-amber-500 bg-amber-500/5 px-2 py-1 text-[11px]"
-              >
-                <span className="font-medium text-amber-700 dark:text-amber-400">amended</span>{" "}
-                <span className="line-through opacity-60">{rule.before}</span> → {rule.after}
-              </div>
-            ))}
-            {version.retired.map((rule) => (
-              <div
-                key={`retire-${rule.ruleKey}`}
-                className="rounded border-l-2 border-rose-500 bg-rose-500/5 px-2 py-1 text-[11px]"
-              >
-                <span className="font-medium text-rose-700 dark:text-rose-400">retired</span>{" "}
-                <span className="line-through opacity-60">{rule.text}</span>
-              </div>
-            ))}
+            <div className="mt-3 space-y-1.5">
+              {version.added.map((rule) => (
+                <div
+                  key={`add-${rule.ruleKey}`}
+                  className="border-l-2 border-positive pl-2.5 text-[0.75rem] leading-relaxed"
+                >
+                  <span className="eyebrow text-positive">added</span>{" "}
+                  <span className="text-muted-foreground">{rule.text}</span>
+                </div>
+              ))}
+              {version.amended.map((rule) => (
+                <div
+                  key={`amend-${rule.ruleKey}`}
+                  className="border-l-2 border-caution pl-2.5 text-[0.75rem] leading-relaxed"
+                >
+                  <span className="eyebrow text-caution">amended</span>{" "}
+                  <span className="text-muted-foreground line-through opacity-60">
+                    {rule.before}
+                  </span>{" "}
+                  <span className="text-muted-foreground">→ {rule.after}</span>
+                </div>
+              ))}
+              {version.retired.map((rule) => (
+                <div
+                  key={`retire-${rule.ruleKey}`}
+                  className="border-l-2 border-destructive pl-2.5 text-[0.75rem] leading-relaxed"
+                >
+                  <span className="eyebrow text-destructive">retired</span>{" "}
+                  <span className="text-muted-foreground line-through opacity-60">{rule.text}</span>
+                </div>
+              ))}
+            </div>
 
             {version.version !== playbook.version && (
-              <Button
-                size="xs"
-                variant="outline"
+              <button
+                type="button"
                 disabled={pending}
                 onClick={() => rollback(version.version)}
+                className="eyebrow mt-3 border-b border-muted-foreground pb-0.5 transition-colors hover:border-signal hover:text-signal disabled:opacity-40"
               >
-                <UndoIcon />
                 Roll back to v{version.version}
-              </Button>
+              </button>
             )}
-          </Card>
+          </article>
         ))}
-      </div>
+      </aside>
     </div>
   );
 }

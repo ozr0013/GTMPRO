@@ -39,6 +39,8 @@ flywheel.db
 flywheel.db-*
 public/generated/
 .worktrees/
+# demo-snapshot.db itself is committed (C5); its WAL sidecars are not
+demo-snapshot.db-*
 
 # vercel
 .vercel

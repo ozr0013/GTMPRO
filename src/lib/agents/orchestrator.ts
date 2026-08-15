@@ -7,7 +7,14 @@ import {
   settings,
   worlds,
 } from "@/lib/db/schema";
-import type { Archetype, DmReplyPayload, PostPayload, ReplyPayload, TimeSlot } from "@/lib/types";
+import type {
+  Archetype,
+  DmReplyPayload,
+  PostPayload,
+  ReplyPayload,
+  TimeSlot,
+  WorldConfig,
+} from "@/lib/types";
 import { TIME_SLOTS } from "@/lib/types";
 import { callAgent } from "@/lib/agents/models";
 import { SYSTEM, formatRules } from "@/lib/agents/prompts";
@@ -24,7 +31,7 @@ import { getArmStats, type ArmStats } from "@/lib/learning/bandit";
 import { rollingHitRate, calibrationNote } from "@/lib/learning/calibration";
 import { checkGuardrails } from "@/lib/learning/guardrails";
 import { getActiveRules, rollbackTo } from "@/lib/learning/playbook";
-import { subRng } from "@/lib/rng";
+import { pick, subRng, type Rng } from "@/lib/rng";
 import { and, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
@@ -75,6 +82,7 @@ function renderContext(
   rules: { ruleKey: string; category: string; text: string }[],
   armStats: ArmStats[],
   hitRate: number | null,
+  pillars: string[],
 ): string {
   const since = Math.max(0, tick - 24);
   const engs = db
@@ -103,6 +111,9 @@ function renderContext(
   return [
     `Sim tick: ${tick} (hour ${tick % 24}, slot hours morning=${TIME_SLOTS.morning.join(",")})`,
     `Calibration: ${calibrationNote(hitRate)}`,
+    // personas' interests are drawn from these, so an off-list topic reaches
+    // people who do not care and the funnel goes quiet
+    `Content pillars — "topic" MUST be one of: ${pillars.join(", ") || "(none configured)"}`,
     "",
     "Playbook rules:",
     formatRules(rules) || "(none)",
@@ -121,6 +132,36 @@ function renderContext(
       .map((t) => `- ${t.id} persona=${t.personaId} turns=${t.turnCount}`)
       .join("\n") || "(none)",
   ].join("\n");
+}
+
+/**
+ * A persona only engages when the post's topic is in their `interests`, and those
+ * interests are drawn from the world's content pillars. A topic outside that list
+ * therefore reaches people and lands with nobody — the post looks fine and the
+ * funnel is silently dead. Snap off-list topics back onto the pillars and say so
+ * in the activity log rather than failing quietly.
+ */
+function groundTopic(
+  worldId: string,
+  tick: number,
+  action: StratAction,
+  pillars: string[],
+  rng: Rng,
+): StratAction {
+  if (action.kind !== "post" || pillars.length === 0 || pillars.includes(action.topic)) {
+    return action;
+  }
+  const topic = pick(rng, pillars);
+  logActivity({
+    worldId,
+    tick,
+    actor: "strategist",
+    action: "topic_snap",
+    status: "ok",
+    summary: `Topic "${action.topic}" is not a content pillar — using "${topic}"`,
+    detail: { requested: action.topic, used: topic, pillars },
+  });
+  return { ...action, topic };
 }
 
 function resolveArmId(action: StratAction, armStats: ArmStats[]): string | undefined {
@@ -282,7 +323,8 @@ export async function runHeartbeat(worldId: string): Promise<{ proposalIds: stri
   const rng = subRng(world.seed, "heartbeat", tick);
   const armStats = getArmStats(worldId, rng);
   const hitRate = rollingHitRate(worldId);
-  const context = renderContext(worldId, tick, rules, armStats, hitRate);
+  const pillars = (world.config as WorldConfig).topics;
+  const context = renderContext(worldId, tick, rules, armStats, hitRate, pillars);
 
   const strat = await callAgent("strategist", StrategistOutput, SYSTEM.strategist, context, {
     worldSeed: world.seed,
@@ -314,7 +356,7 @@ export async function runHeartbeat(worldId: string): Promise<{ proposalIds: stri
   });
 
   for (const action of strat.data.actions) {
-    const id = await processAction(world, action, armStats);
+    const id = await processAction(world, groundTopic(worldId, tick, action, pillars, rng), armStats);
     if (id) proposalIds.push(id);
   }
 

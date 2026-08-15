@@ -1,6 +1,6 @@
 import { GenesisForm } from "../_components/genesis-form";
 import { getWorlds } from "@/lib/db/queries";
-import { Card } from "@/components/ui/card";
+import { SectionHead } from "../_components/section-head";
 
 export const dynamic = "force-dynamic";
 
@@ -8,32 +8,38 @@ export default function OnboardingPage() {
   const existing = getWorlds();
 
   return (
-    <div className="mx-auto max-w-2xl space-y-5 p-6">
-      <div>
-        <h1 className="font-heading text-xl font-semibold">Grow a new world</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Describe a product and Flywheel builds a simulated Pictogram audience for it — with hidden
-          ground truth the agent has to learn by posting.
+    <div className="rise">
+      <header className="border-b px-6 py-8 md:px-10 md:py-10">
+        <p className="eyebrow">Genesis</p>
+        <h1 className="display mt-2.5 max-w-2xl text-[2.25rem]">Grow a new world</h1>
+        <p className="mt-3 max-w-lg text-[0.9rem] leading-relaxed text-muted-foreground">
+          Describe a product and Flywheel builds a simulated Pictogram audience for it — with
+          hidden ground truth the agent has to learn by posting.
         </p>
+      </header>
+
+      <div className="border-b">
+        <GenesisForm />
       </div>
 
-      <GenesisForm />
-
       {existing.length > 0 && (
-        <Card className="gap-2 p-4">
-          <h2 className="font-heading text-sm font-medium">Existing worlds</h2>
-          <ul className="space-y-1 text-sm text-muted-foreground">
+        <section>
+          <SectionHead title="Existing worlds" note="switch from the masthead" />
+          <ul className="ruled">
             {existing.map((world) => (
-              <li key={world.id} className="flex items-center gap-2">
-                <span className="font-medium text-foreground">{world.name}</span>
-                <span className="text-xs">
-                  {world.simLabel} · playbook v{world.playbookVersion} · {world.followers} followers
+              <li
+                key={world.id}
+                className="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-6 py-3 md:px-10"
+              >
+                <span className="display text-[1.15rem]">{world.name}</span>
+                <span className="font-mono text-[0.68rem] text-muted-foreground">
+                  {world.simLabel} · playbook v{world.playbookVersion} · {world.followers}{" "}
+                  followers
                 </span>
               </li>
             ))}
           </ul>
-          <p className="text-xs text-muted-foreground">Switch between them from the top bar.</p>
-        </Card>
+        </section>
       )}
     </div>
   );

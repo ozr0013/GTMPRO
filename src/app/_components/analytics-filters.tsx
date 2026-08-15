@@ -2,7 +2,6 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ARCHETYPES, TIME_SLOTS } from "@/lib/types";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const SLOTS = Object.keys(TIME_SLOTS);
@@ -12,8 +11,6 @@ export function AnalyticsFilters() {
   const pathname = usePathname();
   const params = useSearchParams();
 
-  const current = (key: string) => params.get(key);
-
   const toggle = (key: string, value: string) => {
     const next = new URLSearchParams(params.toString());
     if (next.get(key) === value) next.delete(key);
@@ -22,24 +19,30 @@ export function AnalyticsFilters() {
     router.push(query ? `${pathname}?${query}` : pathname);
   };
 
+  const filtered = params.get("archetype") || params.get("timeSlot");
+
   return (
-    <div className="flex flex-wrap items-center gap-4">
+    <div className="flex flex-wrap items-baseline gap-x-8 gap-y-3 border-b px-6 py-3 md:px-10">
       <FilterRow
         label="Archetype"
         options={ARCHETYPES}
-        active={current("archetype")}
+        active={params.get("archetype")}
         onToggle={(v) => toggle("archetype", v)}
       />
       <FilterRow
-        label="Time slot"
+        label="Slot"
         options={SLOTS}
-        active={current("timeSlot")}
+        active={params.get("timeSlot")}
         onToggle={(v) => toggle("timeSlot", v)}
       />
-      {(current("archetype") || current("timeSlot")) && (
-        <Button size="xs" variant="ghost" onClick={() => router.push(pathname)}>
+      {filtered && (
+        <button
+          type="button"
+          onClick={() => router.push(pathname)}
+          className="eyebrow ml-auto border-b border-muted-foreground pb-0.5 hover:text-foreground"
+        >
           Clear
-        </Button>
+        </button>
       )}
     </div>
   );
@@ -57,19 +60,25 @@ function FilterRow({
   onToggle: (value: string) => void;
 }) {
   return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      {options.map((option) => (
-        <Button
-          key={option}
-          size="xs"
-          variant={active === option ? "default" : "outline"}
-          onClick={() => onToggle(option)}
-          className={cn("capitalize")}
-        >
-          {option}
-        </Button>
-      ))}
+    <div className="flex items-baseline gap-3">
+      <span className="eyebrow">{label}</span>
+      <div className="flex items-baseline gap-3">
+        {options.map((option) => (
+          <button
+            key={option}
+            type="button"
+            onClick={() => onToggle(option)}
+            className={cn(
+              "border-b pb-0.5 font-mono text-[0.7rem] transition-colors",
+              active === option
+                ? "border-signal text-signal"
+                : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {option}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

@@ -9,6 +9,7 @@ export type ActivityActor =
   | "analyst"
   | "coach"
   | "community"
+  | "artdirector"
   | "publisher"
   | "human"
   | "system";
