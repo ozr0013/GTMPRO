@@ -69,6 +69,8 @@ The e2e driver plays heartbeat → approve/reject → two sim days. Success look
 
 ## 6. Expectations & tuning
 
+- **Validated on M1 Max (2026-08-14):** full 2-day e2e (`scripts/e2e-drive.ts`) on qwen3:8b actor + gemma3:12b judge + qwen3:4b cheap ≈ **13–17 minutes**; live genesis ≈ 1–2 min; a heartbeat ≈ 30–90 s. The coach produced predicted-vs-actual lessons with rule citations; bandit observations recorded. qwen3:14b works too but roughly doubles actor latency — use 8b for stage pace, 14b for quality experiments.
+- **Structured outputs are mandatory:** the provider is created with `supportsStructuredOutputs: true` (see `src/lib/agents/models.ts`) so Ollama decodes against the JSON schema. Without it, models free-form JSON and fail validation — if you see "response did not match schema" everywhere, you're on stale code.
 - **Latency:** a sim-day advance takes ~1–4 minutes on local models (vs seconds in mock). Fine for dev and demo; `MODEL_MODE=mock` remains the instant fallback and is what all tests use.
 - **Keep models warm for the demo:** `OLLAMA_KEEP_ALIVE=30m ollama serve` (or `launchctl setenv OLLAMA_KEEP_ALIVE 30m` before starting the app on macOS) so nothing reloads mid-presentation.
 - **JSON hiccups are survivable by design:** a malformed output is retried once, then quarantined into the activity trail — the heartbeat never crashes. If you see frequent quarantines on the 12 GB tier, drop strategist temperature or move that machine to mock mode and let a 16/32 GB machine drive live demos.

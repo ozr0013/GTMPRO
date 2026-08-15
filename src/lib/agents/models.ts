@@ -67,10 +67,12 @@ export function modelFor(role: AgentRole) {
     const local = createOpenAICompatible({
       name: "ollama",
       baseURL: process.env.LOCAL_BASE_URL ?? "http://localhost:11434/v1",
-      // Without this the provider silently drops the JSON schema ("responseFormat
-      // is not supported"), so the model free-forms and every generateObject call
-      // fails validation — genesis and the strategist die first. Ollama's
-      // OpenAI-compatible endpoint does support json_schema response formats.
+      // Ollama supports schema-constrained decoding via response_format. Without
+      // this flag the provider silently drops the JSON schema ("responseFormat is
+      // not supported") and generateObject falls back to prompt-based JSON, which
+      // small local models fail — every structured call dies, genesis first.
+      // Note: `npm run smoke` cannot catch this, since generateText carries no
+      // schema. Validate local mode with scripts/e2e-drive.ts.
       supportsStructuredOutputs: true,
     });
     return local(localModelNameFor(role));
