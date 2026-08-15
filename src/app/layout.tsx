@@ -1,25 +1,18 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { Instrument_Sans, Instrument_Serif, IBM_Plex_Mono } from "next/font/google";
+import { Archivo, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { getWorlds } from "@/lib/db/queries";
 import { getCurrentWorld } from "./current-world";
 import { Nav } from "./_components/nav";
 import { TopBar } from "./_components/top-bar";
 
-// Editorial pairing: a high-contrast serif for display, a refined grotesque for
-// body, and a technical mono for every number and label.
-const sans = Instrument_Sans({
-  variable: "--font-instrument-sans",
+// One heavy grotesque doing display and body, plus a mono for labels and figures.
+const archivo = Archivo({
+  variable: "--font-archivo",
   subsets: ["latin"],
-  display: "swap",
-});
-
-const serif = Instrument_Serif({
-  variable: "--font-instrument-serif",
-  subsets: ["latin"],
-  weight: "400",
+  weight: ["400", "500", "600", "700", "800"],
   display: "swap",
 });
 
@@ -40,41 +33,45 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const worlds = getWorlds();
 
   return (
-    <html
-      lang="en"
-      className={`${sans.variable} ${serif.variable} ${mono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">
-        <div className="relative z-1 flex min-h-screen flex-1">
-          <aside className="hidden w-56 shrink-0 flex-col border-r bg-sidebar md:flex">
-            <Link href="/" className="group block px-5 pt-6 pb-5">
-              <div className="display text-[1.6rem]">Flywheel</div>
-              <div className="eyebrow mt-1.5 transition-colors group-hover:text-foreground">
-                Mission Control
-              </div>
-            </Link>
-            <Nav pendingCount={world?.pendingCount ?? 0} />
-            <div className="mt-auto border-t px-5 py-4">
-              <p className="eyebrow">Platform</p>
-              <p className="mt-1 font-mono text-[0.7rem] text-muted-foreground">
-                Pictogram · simulated
-              </p>
+    // no h-full / min-h-full here: pinning html to the viewport height breaks the
+    // scroll container that `position: sticky` resolves against
+    <html lang="en" className={`${archivo.variable} ${mono.variable} antialiased`}>
+      <body className="flex min-h-screen flex-col">
+        <div className="flex flex-1 flex-col">
+          {/* full-width white nav bar sitting on the grey ground */}
+          <header className="sticky top-0 z-30 bg-card">
+            <div className="flex items-center gap-6 px-5 py-3.5 md:px-8">
+              <Link href="/" className="display shrink-0 text-[1.35rem] tracking-[-0.05em]">
+                flywheel
+              </Link>
+              <Nav pendingCount={world?.pendingCount ?? 0} />
+              <Link
+                href="/onboarding"
+                className="ml-auto shrink-0 rounded-full bg-gradient-to-r from-signal/30 to-signal/10 px-4 py-2 text-[0.7rem] font-bold tracking-widest uppercase transition-opacity hover:opacity-70"
+              >
+                New World
+              </Link>
             </div>
-          </aside>
+          </header>
 
-          <div className="flex min-w-0 flex-1 flex-col">
+          {world ? <TopBar world={world} worlds={worlds} /> : null}
+
+          <main className="flex-1 overflow-x-hidden px-4 pb-14 md:px-8">
             {world ? (
-              <TopBar world={world} worlds={worlds} />
+              children
             ) : (
-              <header className="border-b px-6 py-4">
-                <span className="eyebrow">No world</span>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Create one to start the loop.
-                </p>
-              </header>
+              <div className="mx-auto mt-10 max-w-lg rounded-3xl bg-card p-10 text-center">
+                <p className="eyebrow">No world yet</p>
+                <h1 className="display mt-3 text-4xl">Grow one to start</h1>
+                <Link
+                  href="/onboarding"
+                  className="mt-7 inline-block rounded-full bg-foreground px-6 py-3 text-[0.7rem] font-bold tracking-widest text-background uppercase"
+                >
+                  Get started
+                </Link>
+              </div>
             )}
-            <main className="flex-1 overflow-x-hidden">{children}</main>
-          </div>
+          </main>
         </div>
       </body>
     </html>

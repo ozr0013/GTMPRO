@@ -67,21 +67,26 @@ Track A complete.
 
 ### Mission Control visual language
 
-`globals.css` is the whole design system — components read tokens, so restyling
-happens there, not in page files.
+Modelled on a16z Speedrun. `globals.css` is the whole design system — components
+read tokens, so restyling happens there, not in page files.
 
-- **Ground/ink:** bone paper (`--background`) and warm near-black (`--foreground`).
-  Never pure `#fff`/`#000`. A 2.5% SVG grain sits on `body::before`.
-- **One accent:** `--signal` (warm vermilion) marks the live sim clock, the champion
-  arm, cited rule keys, and the current playbook version. `--positive` / `--caution`
-  / `--destructive` are reserved for playbook diffs (added / amended / retired).
-- **Type:** Instrument Serif for display (`.display`, `.figure`), Instrument Sans for
-  body, IBM Plex Mono for every label and number. Numbers are always tabular.
-- **Primitives:** `.eyebrow` (tracked uppercase mono section marker), `.figure`
-  (large serif numeral), `.ruled` (hairline-separated rows), `.rise` (page-load
-  reveal). Use `<SectionHead>` for section headers so pages keep a shared rhythm.
-- **No cards, no shadows, radius ~2px.** Structure comes from hairline rules and
-  the grid. If something needs separating, rule it — don't float it.
+- **Ground/cards:** warm grey `--background` with pure white `--card`. Content
+  lives in generously rounded cards (`rounded-3xl`, `--radius: 1.25rem`) floating
+  on the grey. Cards are the structure — don't add shadows or heavy borders.
+- **Type:** Archivo throughout. Headlines are heavy and tight (`.display` = 800 /
+  -0.035em; `.display-sm` for card titles; `.figure` for big numerals). IBM Plex
+  Mono for every label and figure, always tabular.
+- **Rhythm:** each card is eyebrow → bold title → muted description, exactly like
+  the reference's CAPITAL / HANDS-ON SUPPORT / NETWORK cards.
+- **One accent:** `--signal` (periwinkle, from the APPLY NOW button tint) marks the
+  live sim clock, cited rule keys, and the pending-approvals badge. `--positive` /
+  `--caution` / `--destructive` stay reserved for playbook diffs.
+- **Primitives:** `.eyebrow`, `.display`, `.display-sm`, `.figure`, `.stat-art`,
+  `.ruled` (rows inside a card), `.rise` (page-load reveal). `<StatArt>` renders the
+  repeated-numeral graphic that stands where the reference puts a photo.
+- **Buttons are pills.** `rounded-full`, uppercase, bold, wide tracking.
+- Note: `<html>` must not carry `h-full` — pinning it to the viewport breaks the
+  scroll container that the sticky masthead resolves against.
 
 ## Shared-file change announcements (additive-only rule)
 

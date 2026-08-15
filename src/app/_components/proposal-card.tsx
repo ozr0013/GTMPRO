@@ -40,79 +40,81 @@ export function ProposalCard({ proposal, index }: { proposal: ProposalView; inde
   ];
 
   return (
-    <article className="border-b">
-      {/* dossier header — numbered like a filing */}
-      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b px-6 py-3 md:px-10">
-        <span className="font-mono text-[0.7rem] text-signal tabular-nums">
+    <article className="mt-4 overflow-hidden rounded-3xl bg-card">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-6 py-4 md:px-8">
+        <span className="font-mono text-[0.75rem] text-signal tabular-nums">
           {String(index + 1).padStart(2, "0")}
         </span>
-        <span className="eyebrow">{proposal.kind}</span>
-        <span className="eyebrow">{proposal.payload.archetype}</span>
-        <span className="eyebrow">{proposal.payload.timeSlot}</span>
+        {[proposal.kind, proposal.payload.archetype, proposal.payload.timeSlot].map((chip) => (
+          <span
+            key={chip}
+            className="rounded-full bg-muted px-3 py-1 text-[0.68rem] font-bold tracking-wider uppercase"
+          >
+            {chip}
+          </span>
+        ))}
         {proposal.riskClass === "sensitive" && (
-          <span className="eyebrow border-b border-destructive text-destructive">
+          <span className="rounded-full bg-destructive/10 px-3 py-1 text-[0.68rem] font-bold tracking-wider text-destructive uppercase">
             sensitive · approval required
           </span>
         )}
-        <span className="ml-auto font-mono text-[0.65rem] text-muted-foreground">
+        <span className="ml-auto font-mono text-[0.68rem] text-muted-foreground">
           proposed {proposal.createdLabel} → runs {proposal.scheduledLabel}
         </span>
       </div>
 
       <div className="grid lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <div className="px-6 py-6 md:px-10 lg:border-r">
-          {/* the draft itself, set as copy rather than as a form field */}
-          <p className="display max-w-xl text-[1.35rem] leading-snug">
-            {proposal.payload.caption}
-          </p>
+        <div className="px-6 py-7 md:px-8 lg:border-r">
+          {/* the draft is the thing being judged, so it gets display type */}
+          <p className="display-sm max-w-xl text-[1.5rem]">{proposal.payload.caption}</p>
           {proposal.payload.hashtags.length > 0 && (
-            <p className="mt-3 font-mono text-[0.72rem] text-signal">
+            <p className="mt-3 font-mono text-[0.75rem] text-signal">
               {proposal.payload.hashtags.join(" ")}
             </p>
           )}
 
-          <div className="mt-6">
+          <div className="mt-7">
             <p className="eyebrow">Creative brief</p>
-            <p className="mt-1.5 text-[0.85rem] text-muted-foreground">
+            <p className="mt-2 text-[0.88rem] text-muted-foreground">
               {proposal.payload.creativeBrief}
             </p>
           </div>
 
           <div className="mt-6">
             <p className="eyebrow">Why this action</p>
-            <p className="mt-1.5 max-w-xl text-[0.9rem] leading-relaxed">{proposal.reasoning}</p>
+            <p className="mt-2 max-w-xl text-[0.92rem] leading-relaxed">{proposal.reasoning}</p>
           </div>
 
           {(proposal.ruleTexts.length > 0 || proposal.armLabel) && (
             <div className="mt-6">
               <p className="eyebrow">Evidence</p>
-              <ul className="ruled mt-2 max-w-xl border-t">
+              <ul className="ruled mt-2 max-w-xl">
                 {proposal.ruleTexts.map((rule) => (
-                  <li key={rule.ruleKey} className="flex gap-3 py-2">
-                    <span className="w-24 shrink-0 font-mono text-[0.65rem] text-signal">
+                  <li key={rule.ruleKey} className="flex gap-3 py-2.5">
+                    <span className="w-24 shrink-0 font-mono text-[0.68rem] text-signal">
                       {rule.ruleKey}
                     </span>
-                    <span className="text-[0.8rem] text-muted-foreground">{rule.text}</span>
+                    <span className="text-[0.85rem] text-muted-foreground">{rule.text}</span>
                   </li>
                 ))}
                 {proposal.armLabel && (
-                  <li className="flex gap-3 py-2">
-                    <span className="w-24 shrink-0 font-mono text-[0.65rem] text-muted-foreground">
+                  <li className="flex gap-3 py-2.5">
+                    <span className="w-24 shrink-0 font-mono text-[0.68rem] text-muted-foreground">
                       bandit
                     </span>
-                    <span className="text-[0.8rem] text-muted-foreground">{proposal.armLabel}</span>
+                    <span className="text-[0.85rem] text-muted-foreground">{proposal.armLabel}</span>
                   </li>
                 )}
               </ul>
             </div>
           )}
 
-          <div className="mt-8 flex flex-wrap items-center gap-6">
+          <div className="mt-8 flex flex-wrap items-center gap-3">
             <button
               type="button"
               disabled={pending}
               onClick={() => decide("approve")}
-              className="bg-foreground px-5 py-2 font-mono text-[0.72rem] tracking-widest text-background uppercase transition-opacity hover:opacity-80 disabled:opacity-40"
+              className="rounded-full bg-foreground px-6 py-3 text-[0.7rem] font-bold tracking-widest text-background uppercase transition-opacity hover:opacity-80 disabled:opacity-40"
             >
               Approve
             </button>
@@ -120,7 +122,7 @@ export function ProposalCard({ proposal, index }: { proposal: ProposalView; inde
               type="button"
               disabled={pending}
               onClick={() => setMode("edit")}
-              className="eyebrow border-b border-foreground pb-0.5 text-foreground transition-opacity hover:opacity-60 disabled:opacity-40"
+              className="rounded-full bg-muted px-6 py-3 text-[0.7rem] font-bold tracking-widest uppercase transition-colors hover:bg-accent disabled:opacity-40"
             >
               Edit first
             </button>
@@ -128,31 +130,27 @@ export function ProposalCard({ proposal, index }: { proposal: ProposalView; inde
               type="button"
               disabled={pending}
               onClick={() => setMode("reject")}
-              className="eyebrow border-b border-destructive pb-0.5 text-destructive transition-opacity hover:opacity-60 disabled:opacity-40"
+              className="rounded-full px-6 py-3 text-[0.7rem] font-bold tracking-widest text-destructive uppercase transition-colors hover:bg-destructive/10 disabled:opacity-40"
             >
               Reject
             </button>
           </div>
         </div>
 
-        {/* predicted effect as a ruled table — the agent's stated confidence */}
-        <aside>
-          <div className="border-b px-6 py-3">
-            <p className="eyebrow">Predicted effect</p>
-          </div>
-          <dl className="ruled">
+        <aside className="bg-muted/40 px-6 py-7 md:px-8">
+          <p className="eyebrow">Predicted effect</p>
+          <dl className="ruled mt-3">
             {ranges.map((r) => (
-              <div key={r.label} className="flex items-baseline justify-between px-6 py-2.5">
-                <dt className="text-[0.8rem] text-muted-foreground">{r.label}</dt>
-                <dd className="font-mono text-[0.82rem] tabular-nums">
+              <div key={r.label} className="flex items-baseline justify-between py-2.5">
+                <dt className="text-[0.85rem] text-muted-foreground">{r.label}</dt>
+                <dd className="font-mono text-[0.85rem] tabular-nums">
                   {r.range[0]}–{r.range[1]}
                 </dd>
               </div>
             ))}
           </dl>
-          <p className="px-6 py-3 text-[0.72rem] leading-relaxed text-muted-foreground">
-            The analyst scores these against reality after 24 ticks. Calibration lives in
-            Brain.
+          <p className="mt-4 text-[0.75rem] leading-relaxed text-muted-foreground">
+            The analyst scores these against reality after 24 ticks. Calibration lives in Brain.
           </p>
         </aside>
       </div>
@@ -161,7 +159,9 @@ export function ProposalCard({ proposal, index }: { proposal: ProposalView; inde
       <Dialog open={mode === "reject"} onOpenChange={(open) => !open && setMode(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="display text-[1.35rem]">Why are you rejecting this?</DialogTitle>
+            <DialogTitle className="display-sm text-[1.4rem]">
+              Why are you rejecting this?
+            </DialogTitle>
             <DialogDescription>
               The coach turns your reason into a playbook rule, so the next proposal differs.
             </DialogDescription>
@@ -182,7 +182,7 @@ export function ProposalCard({ proposal, index }: { proposal: ProposalView; inde
             <button
               type="button"
               onClick={() => setMode(null)}
-              className="eyebrow px-3 py-2 hover:text-foreground"
+              className="rounded-full px-5 py-2.5 text-[0.7rem] font-bold tracking-widest uppercase hover:bg-muted"
             >
               Cancel
             </button>
@@ -190,7 +190,7 @@ export function ProposalCard({ proposal, index }: { proposal: ProposalView; inde
               type="button"
               disabled={pending || reason.trim().length === 0}
               onClick={() => decide("reject")}
-              className="bg-destructive px-4 py-2 font-mono text-[0.72rem] tracking-widest text-background uppercase disabled:opacity-40"
+              className="rounded-full bg-destructive px-5 py-2.5 text-[0.7rem] font-bold tracking-widest text-white uppercase disabled:opacity-40"
             >
               Reject
             </button>
@@ -201,7 +201,7 @@ export function ProposalCard({ proposal, index }: { proposal: ProposalView; inde
       <Dialog open={mode === "edit"} onOpenChange={(open) => !open && setMode(null)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle className="display text-[1.35rem]">Edit before approving</DialogTitle>
+            <DialogTitle className="display-sm text-[1.4rem]">Edit before approving</DialogTitle>
             <DialogDescription>
               Your edit is stored as a diff and distilled into voice rules.
             </DialogDescription>
@@ -230,7 +230,7 @@ export function ProposalCard({ proposal, index }: { proposal: ProposalView; inde
             <button
               type="button"
               onClick={() => setMode(null)}
-              className="eyebrow px-3 py-2 hover:text-foreground"
+              className="rounded-full px-5 py-2.5 text-[0.7rem] font-bold tracking-widest uppercase hover:bg-muted"
             >
               Cancel
             </button>
@@ -238,7 +238,7 @@ export function ProposalCard({ proposal, index }: { proposal: ProposalView; inde
               type="button"
               disabled={pending || caption.trim().length < 10}
               onClick={() => decide("edit")}
-              className="bg-foreground px-4 py-2 font-mono text-[0.72rem] tracking-widest text-background uppercase disabled:opacity-40"
+              className="rounded-full bg-foreground px-5 py-2.5 text-[0.7rem] font-bold tracking-widest text-background uppercase disabled:opacity-40"
             >
               Approve with edit
             </button>
