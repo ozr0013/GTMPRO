@@ -1,313 +1,325 @@
-// Orchestrator: heartbeat (strategist → guardrails → copywriter → critic → proposal),
-// human approval gate, and the publisher. Every step lands in activity_log.
-
 import { db } from "@/lib/db/client";
 import {
-  worlds,
-  settings,
+  dmThreads,
   engagements,
   funnelEvents,
-  dmThreads,
-  dmMessages,
   proposals,
-  posts,
-  banditArms,
-  activityLog,
+  settings,
+  worlds,
 } from "@/lib/db/schema";
-import type { DmReplyPayload, PostPayload, PredictedEffect, TimeSlot } from "@/lib/types";
+import type { Archetype, DmReplyPayload, PostPayload, ReplyPayload, TimeSlot } from "@/lib/types";
 import { TIME_SLOTS } from "@/lib/types";
 import { callAgent } from "@/lib/agents/models";
 import { SYSTEM, formatRules } from "@/lib/agents/prompts";
-import { StrategistOutput, CopywriterOutput, CriticOutput } from "@/lib/contracts";
-import { getActiveRules } from "@/lib/learning/playbook";
+import { logActivity } from "@/lib/agents/log";
+import { nextTickForSlot, publishProposal } from "@/lib/agents/publisher";
+import { runCommunityPass } from "@/lib/agents/communityRunner";
+import {
+  CopywriterOutput,
+  CriticOutput,
+  StrategistOutput,
+  type StrategistOutputT,
+} from "@/lib/contracts";
+import { getArmStats, type ArmStats } from "@/lib/learning/bandit";
+import { rollingHitRate, calibrationNote } from "@/lib/learning/calibration";
 import { checkGuardrails } from "@/lib/learning/guardrails";
-import { sampleArm } from "@/lib/learning/bandit";
+import { getActiveRules, rollbackTo } from "@/lib/learning/playbook";
 import { subRng } from "@/lib/rng";
 import { and, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
-/** Shape stored in proposals.evidence for post proposals. */
-export interface ProposalEvidence {
-  ruleIds: string[];
-  banditArmId?: string;
-  signals: string[];
-}
+export { publishProposal, expireStaleProposals, nextTickForSlot } from "@/lib/agents/publisher";
 
-/** dm_reply proposals carry the community agent's qualification alongside the reply. */
-export type DmReplyProposalPayload = DmReplyPayload & {
-  qualification: "continue" | "meeting_booked" | "disqualified";
+const EMPTY_EFFECT = {
+  impressions: [0, 0] as [number, number],
+  likes: [0, 0] as [number, number],
+  linkClicks: [0, 0] as [number, number],
+  signups: [0, 0] as [number, number],
 };
 
-export const ZERO_EFFECT: PredictedEffect = {
-  impressions: [0, 0],
-  likes: [0, 0],
-  linkClicks: [0, 0],
-  signups: [0, 0],
-};
+type StratAction = StrategistOutputT["actions"][number];
 
-export function logActivity(
-  worldId: string,
-  tick: number,
-  actor: string,
-  action: string,
-  status: string,
-  summary: string,
-  ref?: { refType: string; refId: string },
-  detail?: unknown,
-): void {
-  db.insert(activityLog)
-    .values({
-      id: randomUUID(),
-      worldId,
-      tick,
-      actor,
-      action,
-      refType: ref?.refType,
-      refId: ref?.refId,
-      status,
-      summary,
-      detail,
-      createdAt: new Date(),
-    })
-    .run();
-}
-
-/** Smallest tick T > currentTick whose hour-of-day falls in the given slot. */
-export function nextSlotTick(currentTick: number, timeSlot: TimeSlot): number {
-  const hours = TIME_SLOTS[timeSlot];
-  let t = currentTick + 1;
-  while (!hours.includes(t % 24)) t++;
-  return t;
-}
-
-function insertQuarantinedProposal(
-  worldId: string,
-  tick: number,
-  reasoning: string,
-  error: string,
-): void {
+function insertQuarantined(worldId: string, tick: number, error: string, kind: "post" | "reply" | "dm_reply" = "post"): string {
   const id = randomUUID();
   db.insert(proposals)
     .values({
       id,
       worldId,
-      kind: "post",
+      kind,
       status: "quarantined",
-      payload: {},
-      reasoning,
-      evidence: { error },
-      predictedEffect: ZERO_EFFECT,
+      payload: { error },
+      reasoning: error,
+      evidence: { ruleIds: [], signals: [] },
+      predictedEffect: EMPTY_EFFECT,
       riskClass: "normal",
       createdTick: tick,
     })
     .run();
-  logActivity(
+  logActivity({
     worldId,
     tick,
-    "system",
-    "quarantine",
-    "quarantined",
-    `${reasoning}: ${error}`,
-    { refType: "proposal", refId: id },
-    { error },
-  );
+    actor: "system",
+    action: "quarantine",
+    status: "quarantined",
+    summary: error,
+    refType: "proposal",
+    refId: id,
+    detail: { error },
+  });
+  return id;
 }
 
-function buildHeartbeatContext(worldId: string, simTick: number): string {
-  const rules = formatRules(getActiveRules(worldId));
-
-  const arms = db.select().from(banditArms).where(eq(banditArms.worldId, worldId)).all();
-  const armStats = arms
-    .map(
-      (a) =>
-        `${a.archetype}/${a.timeSlot}: alpha=${a.alpha.toFixed(2)} beta=${a.beta.toFixed(2)} mean=${(
-          a.alpha / (a.alpha + a.beta)
-        ).toFixed(3)}`,
-    )
-    .join("\n");
-
-  const since = simTick - 24;
-  const recentEngagements = db
+function renderContext(
+  worldId: string,
+  tick: number,
+  rules: { ruleKey: string; category: string; text: string }[],
+  armStats: ArmStats[],
+  hitRate: number | null,
+): string {
+  const since = Math.max(0, tick - 24);
+  const engs = db
     .select()
     .from(engagements)
     .where(eq(engagements.worldId, worldId))
     .all()
-    .filter((e) => e.tick > since);
-  const recentFunnel = db
+    .filter((e) => e.tick >= since);
+  const funnel = db
     .select()
     .from(funnelEvents)
     .where(eq(funnelEvents.worldId, worldId))
     .all()
-    .filter((e) => e.tick > since);
-  const countBy = (rows: { kind: string }[]) => {
-    const counts = new Map<string, number>();
-    for (const r of rows) counts.set(r.kind, (counts.get(r.kind) ?? 0) + 1);
-    return [...counts.entries()].map(([k, n]) => `${k}=${n}`).join(" ") || "(none)";
-  };
+    .filter((e) => e.tick >= since);
+  const countKind = (rows: { kind: string }[], kind: string) => rows.filter((r) => r.kind === kind).length;
+  const comments = engs.filter((e) => e.kind === "comment").slice(-10);
+  const threads = db.select().from(dmThreads).where(eq(dmThreads.worldId, worldId)).all();
 
-  const openComments = recentEngagements
-    .filter((e) => e.kind === "comment" && e.commentText && e.commentText !== "[pending persona voice]")
-    .map((e) => `- "${e.commentText}"`)
-    .join("\n");
-
-  const openThreads = db
-    .select()
-    .from(dmThreads)
-    .where(and(eq(dmThreads.worldId, worldId), eq(dmThreads.status, "open")))
-    .all();
-  const dmSummary = openThreads
-    .map((t) => {
-      const msgs = db.select().from(dmMessages).where(eq(dmMessages.threadId, t.id)).all();
-      const last = msgs[msgs.length - 1];
-      return `- thread ${t.id} (turn ${t.turnCount}/3), last: ${last ? `${last.sender}: "${last.text}"` : "(empty)"}`;
-    })
+  const arms = armStats
+    .map(
+      (a) =>
+        `- ${a.archetype}/${a.timeSlot} id=${a.id} mean=${a.mean.toFixed(3)} n=${a.n} thompson=${a.sample.toFixed(3)}`,
+    )
     .join("\n");
 
   return [
-    "# Active playbook rules",
-    rules,
-    "# Bandit arm stats (archetype/timeSlot)",
-    armStats,
-    "# Last 24 ticks — engagement counts",
-    countBy(recentEngagements),
-    "# Last 24 ticks — funnel counts",
-    countBy(recentFunnel),
-    "# Unanswered comments",
-    openComments || "(none)",
-    "# Open DM threads",
-    dmSummary || "(none)",
-  ].join("\n\n");
+    `Sim tick: ${tick} (hour ${tick % 24}, slot hours morning=${TIME_SLOTS.morning.join(",")})`,
+    `Calibration: ${calibrationNote(hitRate)}`,
+    "",
+    "Playbook rules:",
+    formatRules(rules) || "(none)",
+    "",
+    "Bandit arms (cite banditArmId on post actions):",
+    arms,
+    "",
+    `Last 24 ticks: impressions=${countKind(engs, "impression")} likes=${countKind(engs, "like")} comments=${countKind(engs, "comment")} clicks=${countKind(funnel, "link_click")} signups=${countKind(funnel, "signup")} dms=${countKind(funnel, "dm_started")} meetings=${countKind(funnel, "meeting_booked")}`,
+    "",
+    "Recent comments:",
+    comments.map((c) => `- ${c.id}: ${c.commentText ?? ""}`).join("\n") || "(none)",
+    "",
+    "Open DM threads:",
+    threads
+      .filter((t) => t.status === "open")
+      .map((t) => `- ${t.id} persona=${t.personaId} turns=${t.turnCount}`)
+      .join("\n") || "(none)",
+  ].join("\n");
 }
 
-export async function runHeartbeat(worldId: string): Promise<{ proposalIds: string[] }> {
-  const world = db.select().from(worlds).where(eq(worlds.id, worldId)).get()!;
-  const worldSettings = db.select().from(settings).where(eq(settings.worldId, worldId)).get()!;
-  const tick = world.simTick;
+function resolveArmId(action: StratAction, armStats: ArmStats[]): string | undefined {
+  if (action.banditArmId) return action.banditArmId;
+  const archetype = (action.archetype ?? "education") as Archetype;
+  const timeSlot = (action.timeSlot ?? "morning") as TimeSlot;
+  return armStats.find((a) => a.archetype === archetype && a.timeSlot === timeSlot)?.id;
+}
 
-  if (worldSettings.paused) {
-    logActivity(worldId, tick, "system", "heartbeat", "skipped", "skipped: paused");
-    return { proposalIds: [] };
-  }
-
-  const context = buildHeartbeatContext(worldId, tick);
-  const strat = await callAgent("strategist", StrategistOutput, SYSTEM.strategist, context, {
-    worldSeed: world.seed,
-    refId: `hb-${tick}`,
+async function processAction(
+  world: { id: string; seed: string; simTick: number },
+  action: StratAction,
+  armStats: ArmStats[],
+): Promise<string | null> {
+  const slot = (action.timeSlot ?? "morning") as TimeSlot;
+  const scheduledTick = nextTickForSlot(world.simTick, slot);
+  const gate = checkGuardrails(world.id, {
+    kind: action.kind,
+    topic: action.topic,
+    scheduledTick,
+    riskClass: action.riskClass,
   });
-  if (!strat.ok) {
-    insertQuarantinedProposal(worldId, tick, "strategist failure", strat.error);
-    return { proposalIds: [] };
+  if (!gate.allowed) {
+    logActivity({
+      worldId: world.id,
+      tick: world.simTick,
+      actor: "strategist",
+      action: "propose",
+      status: "blocked",
+      summary: gate.reasons.join("; "),
+      detail: { reasons: gate.reasons, kind: action.kind },
+    });
+    return null;
   }
 
-  logActivity(worldId, tick, "strategist", "propose", "ok", strat.data.strategyNote);
+  let payload: PostPayload | DmReplyPayload | ReplyPayload;
+  const banditArmId = action.kind === "post" ? resolveArmId(action, armStats) : undefined;
 
-  const proposalIds: string[] = [];
-  for (const [actionIndex, action] of strat.data.actions.entries()) {
-    const timeSlot: TimeSlot = action.timeSlot ?? "morning";
-    const scheduledTick = nextSlotTick(tick, timeSlot);
-
-    const gate = checkGuardrails(worldId, {
-      kind: action.kind,
-      topic: action.topic,
-      scheduledTick,
-      riskClass: action.riskClass,
-    });
-    if (!gate.allowed) {
-      logActivity(worldId, tick, "system", "guardrail_block", "blocked", gate.reasons.join("; "));
-      continue;
-    }
-
-    // Heartbeat only drives the post pipeline; DM replies are the community
-    // runner's job and standalone comment replies are out of scope for Task 5.
-    if (action.kind !== "post") {
-      logActivity(
-        worldId,
-        tick,
-        "system",
-        "skip_action",
-        "skipped",
-        `unsupported heartbeat action kind: ${action.kind}`,
-      );
-      continue;
-    }
-
-    const voiceRules = formatRules(getActiveRules(worldId).filter((r) => r.category === "voice"));
+  if (action.kind === "post") {
     const copy = await callAgent(
       "copywriter",
       CopywriterOutput,
       SYSTEM.copywriter,
-      `Angle: ${action.angle}\nTopic: ${action.topic}\nArchetype: ${action.archetype ?? "education"}\n\nVoice rules:\n${voiceRules || "(none)"}`,
-      { worldSeed: world.seed, refId: `cw-${tick}-${actionIndex}` },
+      `Angle: ${action.angle}\nTopic: ${action.topic}\nArchetype: ${action.archetype ?? "education"}\nRules:\n${formatRules(getActiveRules(world.id))}`,
+      { worldSeed: world.seed, refId: `copy-${world.simTick}-${action.topic}` },
     );
-    if (!copy.ok) {
-      insertQuarantinedProposal(worldId, tick, "copywriter failure", copy.error);
-      continue;
-    }
-    logActivity(worldId, tick, "copywriter", "draft", "ok", copy.data.caption.slice(0, 120));
+    if (!copy.ok) return insertQuarantined(world.id, world.simTick, copy.error);
+    logActivity({
+      worldId: world.id,
+      tick: world.simTick,
+      actor: "copywriter",
+      action: "draft",
+      status: "ok",
+      summary: copy.data.caption.slice(0, 160),
+    });
 
-    const critic = await callAgent(
-      "critic",
-      CriticOutput,
-      SYSTEM.critic,
-      `Drafted caption:\n${copy.data.caption}\n\nHashtags: ${copy.data.hashtags.join(" ")}\nTopic: ${action.topic}`,
-      { worldSeed: world.seed, refId: `cr-${tick}-${actionIndex}` },
-    );
-    if (!critic.ok) {
-      insertQuarantinedProposal(worldId, tick, "critic failure", critic.error);
-      continue;
+    const criticUser = `Caption: ${copy.data.caption}\nHashtags: ${copy.data.hashtags.join(" ")}\nBrief: ${copy.data.creativeBrief}`;
+    const critic = await callAgent("critic", CriticOutput, SYSTEM.critic, criticUser, {
+      worldSeed: world.seed,
+      refId: `critic-${world.simTick}-${action.topic}`,
+    });
+    if (!critic.ok) return insertQuarantined(world.id, world.simTick, critic.error);
+    if (critic.data.verdict === "block") {
+      logActivity({
+        worldId: world.id,
+        tick: world.simTick,
+        actor: "critic",
+        action: "review",
+        status: "blocked",
+        summary: critic.data.issues.map((i) => i.note).join("; ") || "blocked",
+        detail: critic.data,
+      });
+      return null;
     }
-    const issueSummary = critic.data.issues.map((i) => `${i.severity}/${i.kind}: ${i.note}`).join("; ");
-    logActivity(
-      worldId,
-      tick,
-      "critic",
-      "review",
-      critic.data.verdict,
-      issueSummary || `verdict: ${critic.data.verdict}`,
-    );
-    if (critic.data.verdict === "block") continue;
+    logActivity({
+      worldId: world.id,
+      tick: world.simTick,
+      actor: "critic",
+      action: "review",
+      status: critic.data.verdict,
+      summary: critic.data.verdict,
+    });
     const caption =
       critic.data.verdict === "revise" && critic.data.revisedCaption
         ? critic.data.revisedCaption
         : copy.data.caption;
-
-    const arm = sampleArm(worldId, subRng(world.seed, "arm", tick, actionIndex));
-
-    const payload: PostPayload = {
-      archetype: action.archetype ?? "education",
-      timeSlot,
+    payload = {
+      archetype: (action.archetype ?? "education") as Archetype,
+      timeSlot: slot,
       topic: action.topic,
       caption,
       hashtags: copy.data.hashtags,
       creativeBrief: copy.data.creativeBrief,
       scheduledTick,
     };
-    const evidence: ProposalEvidence = {
-      ruleIds: action.evidenceRuleIds,
-      banditArmId: arm.id,
-      signals: [],
+  } else if (action.kind === "dm_reply") {
+    payload = { threadId: action.threadId ?? "", text: action.angle };
+  } else {
+    payload = {
+      postId: "",
+      commentEngagementId: action.replyToEngagementId ?? "",
+      text: action.angle,
     };
-    const proposalId = randomUUID();
-    const status = gate.requiresApproval ? "pending" : "auto_approved";
-    db.insert(proposals)
-      .values({
-        id: proposalId,
-        worldId,
-        kind: action.kind,
-        status,
-        payload,
-        reasoning: action.reasoning,
-        evidence,
-        predictedEffect: action.predictedEffect,
-        riskClass: action.riskClass,
-        createdTick: tick,
-      })
-      .run();
-    proposalIds.push(proposalId);
-
-    if (status === "auto_approved") publishProposal(proposalId);
   }
 
+  const id = randomUUID();
+  const status = gate.requiresApproval ? "pending" : "auto_approved";
+  db.insert(proposals)
+    .values({
+      id,
+      worldId: world.id,
+      kind: action.kind,
+      status,
+      payload,
+      reasoning: action.reasoning,
+      evidence: {
+        ruleIds: action.evidenceRuleIds,
+        banditArmId,
+        signals: [action.angle],
+      },
+      predictedEffect: action.predictedEffect,
+      riskClass: action.riskClass,
+      createdTick: world.simTick,
+    })
+    .run();
+  logActivity({
+    worldId: world.id,
+    tick: world.simTick,
+    actor: "strategist",
+    action: "propose",
+    status,
+    summary: action.reasoning,
+    refType: "proposal",
+    refId: id,
+  });
+  if (status === "auto_approved") publishProposal(id);
+  return id;
+}
+
+export async function runHeartbeat(worldId: string): Promise<{ proposalIds: string[] }> {
+  const world = db.select().from(worlds).where(eq(worlds.id, worldId)).get()!;
+  const s = db.select().from(settings).where(eq(settings.worldId, worldId)).get()!;
+  const tick = world.simTick;
+  const proposalIds: string[] = [];
+
+  if (s.paused) {
+    logActivity({
+      worldId,
+      tick,
+      actor: "system",
+      action: "heartbeat",
+      status: "skipped",
+      summary: "skipped: paused",
+    });
+    return { proposalIds };
+  }
+
+  const rules = getActiveRules(worldId);
+  const rng = subRng(world.seed, "heartbeat", tick);
+  const armStats = getArmStats(worldId, rng);
+  const hitRate = rollingHitRate(worldId);
+  const context = renderContext(worldId, tick, rules, armStats, hitRate);
+
+  const strat = await callAgent("strategist", StrategistOutput, SYSTEM.strategist, context, {
+    worldSeed: world.seed,
+    refId: `heartbeat-${tick}`,
+  });
+
+  if (!strat.ok) {
+    insertQuarantined(world.id, tick, strat.error);
+    logActivity({
+      worldId,
+      tick,
+      actor: "strategist",
+      action: "propose",
+      status: "quarantined",
+      summary: strat.error,
+    });
+    const extra = await runCommunityPass(worldId);
+    return { proposalIds: extra.proposalIds };
+  }
+
+  logActivity({
+    worldId,
+    tick,
+    actor: "strategist",
+    action: "propose",
+    status: "ok",
+    summary: strat.data.strategyNote,
+    detail: { actionCount: strat.data.actions.length },
+  });
+
+  for (const action of strat.data.actions) {
+    const id = await processAction(world, action, armStats);
+    if (id) proposalIds.push(id);
+  }
+
+  const extra = await runCommunityPass(worldId);
+  proposalIds.push(...extra.proposalIds);
   return { proposalIds };
 }
 
@@ -318,138 +330,91 @@ export async function decideProposal(
 ): Promise<void> {
   const proposal = db.select().from(proposals).where(eq(proposals.id, proposalId)).get()!;
   const world = db.select().from(worlds).where(eq(worlds.id, proposal.worldId)).get()!;
-  const tick = world.simTick;
-  const ref = { refType: "proposal", refId: proposalId };
 
   if (decision === "reject") {
     db.update(proposals)
-      .set({ status: "rejected", humanReason: opts?.reason, decidedTick: tick })
+      .set({
+        status: "rejected",
+        humanReason: opts?.reason ?? "",
+        decidedTick: world.simTick,
+      })
       .where(eq(proposals.id, proposalId))
       .run();
-    logActivity(
-      proposal.worldId,
-      tick,
-      "human",
-      "reject",
-      "rejected",
-      opts?.reason ?? "rejected without reason",
-      ref,
-    );
+    logActivity({
+      worldId: proposal.worldId,
+      tick: world.simTick,
+      actor: "human",
+      action: "reject",
+      status: "rejected",
+      summary: opts?.reason ?? "rejected",
+      refType: "proposal",
+      refId: proposalId,
+    });
     return;
   }
 
-  if (decision === "approve") {
-    db.update(proposals)
-      .set({ status: "approved", decidedTick: tick })
-      .where(eq(proposals.id, proposalId))
-      .run();
-    logActivity(proposal.worldId, tick, "human", "approve", "approved", "proposal approved", ref);
-  } else {
-    const before = proposal.payload as PostPayload;
+  if (decision === "edit") {
+    const before = proposal.payload;
     const after = opts?.editedPayload ?? before;
     db.update(proposals)
       .set({
         status: "edited_approved",
-        humanEditDiff: { before, after },
         payload: after,
-        decidedTick: tick,
+        humanEditDiff: { before, after },
+        decidedTick: world.simTick,
       })
       .where(eq(proposals.id, proposalId))
       .run();
-    logActivity(
-      proposal.worldId,
-      tick,
-      "human",
-      "edit",
-      "edited_approved",
-      "proposal edited and approved",
-      ref,
-    );
+    logActivity({
+      worldId: proposal.worldId,
+      tick: world.simTick,
+      actor: "human",
+      action: "edit",
+      status: "edited_approved",
+      summary: "edited and approved",
+      refType: "proposal",
+      refId: proposalId,
+    });
+    publishProposal(proposalId);
+    return;
   }
 
+  db.update(proposals)
+    .set({ status: "approved", decidedTick: world.simTick })
+    .where(eq(proposals.id, proposalId))
+    .run();
+  logActivity({
+    worldId: proposal.worldId,
+    tick: world.simTick,
+    actor: "human",
+    action: "approve",
+    status: "approved",
+    summary: "approved",
+    refType: "proposal",
+    refId: proposalId,
+  });
   publishProposal(proposalId);
 }
 
-/** Turn an approved/auto-approved proposal into its side effect (post row or DM reply). */
-function publishProposal(proposalId: string): void {
-  const proposal = db.select().from(proposals).where(eq(proposals.id, proposalId)).get()!;
-  const world = db.select().from(worlds).where(eq(worlds.id, proposal.worldId)).get()!;
-  const tick = world.simTick;
-
-  if (proposal.kind === "post") {
-    const payload = proposal.payload as PostPayload;
-    const evidence = proposal.evidence as ProposalEvidence;
-    const postId = randomUUID();
-    db.insert(posts)
-      .values({
-        id: postId,
-        worldId: proposal.worldId,
-        authorType: "brand",
-        proposalId: proposal.id,
-        banditArmId: evidence.banditArmId,
-        archetype: payload.archetype,
-        topic: payload.topic,
-        caption: payload.caption,
-        hashtags: payload.hashtags,
-        creativeBrief: payload.creativeBrief,
-        scheduledTick: payload.scheduledTick,
-        status: "scheduled",
-      })
-      .run();
-    logActivity(
-      proposal.worldId,
-      tick,
-      "publisher",
-      "schedule_post",
-      "scheduled",
-      `post scheduled for tick ${payload.scheduledTick}: ${payload.caption.slice(0, 80)}`,
-      { refType: "post", refId: postId },
-    );
-  } else if (proposal.kind === "dm_reply") {
-    const payload = proposal.payload as DmReplyProposalPayload;
-    executeDmReply(proposal.worldId, payload, tick, "publisher");
-  }
+export function getQuarantined(worldId: string) {
+  return db
+    .select()
+    .from(proposals)
+    .where(and(eq(proposals.worldId, worldId), eq(proposals.status, "quarantined")))
+    .all();
 }
 
-/** Shared effect of sending a brand DM reply (used by publisher and autopilot community). */
-export function executeDmReply(
-  worldId: string,
-  payload: DmReplyProposalPayload,
-  tick: number,
-  actor: "publisher" | "community",
-): void {
-  const thread = db.select().from(dmThreads).where(eq(dmThreads.id, payload.threadId)).get()!;
-  db.insert(dmMessages)
-    .values({ id: randomUUID(), threadId: thread.id, sender: "agent", text: payload.text, tick })
-    .run();
-  db.update(dmThreads)
-    .set({ turnCount: thread.turnCount + 1 })
-    .where(eq(dmThreads.id, thread.id))
-    .run();
-
-  if (payload.qualification === "meeting_booked" || payload.qualification === "disqualified") {
-    db.update(dmThreads)
-      .set({ status: payload.qualification === "meeting_booked" ? "qualified" : "disqualified" })
-      .where(eq(dmThreads.id, thread.id))
-      .run();
-    db.insert(funnelEvents)
-      .values({
-        id: randomUUID(),
-        worldId,
-        personaId: thread.personaId,
-        kind: payload.qualification,
-        tick,
-      })
-      .run();
-  }
-
-  logActivity(
+export function rollbackPlaybook(worldId: string, targetVersion: number, tick: number) {
+  const res = rollbackTo(worldId, targetVersion, tick);
+  logActivity({
     worldId,
     tick,
-    actor,
-    "dm_reply",
-    "sent",
-    `DM reply sent (${payload.qualification})`,
-    { refType: "dm_thread", refId: thread.id },
-  );
+    actor: "human",
+    action: "rollback",
+    status: "ok",
+    summary: `rollback to v${targetVersion}`,
+    refType: "playbook",
+    refId: res.versionId,
+  });
+  return res;
 }

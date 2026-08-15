@@ -57,7 +57,7 @@ export async function callAgent<T>(
   opts: { worldSeed: string; refId: string },
 ): Promise<CallResult<T>> {
   if ((process.env.MODEL_MODE ?? "mock") === "mock") {
-    return { ok: true, data: mockFor(role, opts) as T };
+    return { ok: true, data: mockFor(role, opts, user) as T };
   }
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
@@ -78,7 +78,7 @@ export async function callAgent<T>(
 }
 
 /** Seeded, schema-valid canned outputs so the full loop runs offline. */
-function mockFor(role: AgentRole, opts: { worldSeed: string; refId: string }): unknown {
+function mockFor(role: AgentRole, opts: { worldSeed: string; refId: string }, user = ""): unknown {
   const rng = subRng(opts.worldSeed, "mock", role, opts.refId);
   const archetype = pick(rng, ["education", "story", "meme", "product"] as const);
   const timeSlot = pick(rng, ["morning", "midday", "evening"] as const);
@@ -108,6 +108,12 @@ function mockFor(role: AgentRole, opts: { worldSeed: string; refId: string }): u
         altText: "Brew diagram",
       });
     case "critic":
+      if (/\bFORCE_CRITIC_BLOCK\b/.test(user)) {
+        return CriticOutput.parse({
+          verdict: "block",
+          issues: [{ severity: "high", kind: "quality", note: "forced block for tests" }],
+        });
+      }
       return CriticOutput.parse({ verdict: "pass", issues: [] });
     case "analyst":
       return AnalystOutput.parse({
@@ -116,7 +122,27 @@ function mockFor(role: AgentRole, opts: { worldSeed: string; refId: string }): u
         summary: "Mock analysis: morning slot outperformed prediction.",
         suggestedLessons: [{ category: "timing", text: "Morning education posts outperform.", confidence: 0.7 }],
       });
-    case "coach":
+    case "coach": {
+      const editLike =
+        /hashtag|word-diff|humanEditDiff|sourceType["']?\s*:\s*["']?edit/i.test(user) ||
+        /-\s*#\w+/.test(user);
+      if (editLike) {
+        return CoachOutput.parse({
+          playbookChanges: {
+            add: [
+              {
+                category: "voice",
+                text: "Keep hashtag count low; do not lead with hashtag dumps.",
+                evidenceRefs: [opts.refId],
+                sourceType: "edit",
+              },
+            ],
+            amend: [],
+            retire: [],
+          },
+          changeSummary: "Mock: +1 voice rule from human edit (hashtags)",
+        });
+      }
       return CoachOutput.parse({
         playbookChanges: {
           add: [
@@ -132,6 +158,7 @@ function mockFor(role: AgentRole, opts: { worldSeed: string; refId: string }): u
         },
         changeSummary: "Mock: +1 timing rule from outcomes",
       });
+    }
     case "community":
       return CommunityOutput.parse({
         replyText: "Happy to walk you through it — want a quick 15-min call?",

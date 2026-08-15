@@ -2,7 +2,7 @@ import { db } from "@/lib/db/client";
 import { banditArms, banditObservations } from "@/lib/db/schema";
 import type { PredictedEffect } from "@/lib/types";
 import type { Rng } from "@/lib/rng";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
 /** Marsaglia-Tsang-free gamma sampler adequate for demo-scale Beta sampling. */
@@ -71,4 +71,75 @@ export function computeReward(
   ];
   const total = hits.reduce((s, h) => s + h.w, 0);
   return hits.reduce((s, h) => s + (h.ok ? h.w : 0), 0) / total;
+}
+
+export interface ArmStats {
+  id: string;
+  archetype: string;
+  timeSlot: string;
+  alpha: number;
+  beta: number;
+  mean: number;
+  n: number;
+  sample: number;
+}
+
+/** Per-arm means, observation counts, and a fresh Thompson sample for strategist context. */
+export function getArmStats(worldId: string, rng: Rng): ArmStats[] {
+  const arms = db
+    .select()
+    .from(banditArms)
+    .where(and(eq(banditArms.worldId, worldId), eq(banditArms.enabled, true)))
+    .all();
+  return arms.map((arm) => {
+    const n = db
+      .select()
+      .from(banditObservations)
+      .where(eq(banditObservations.armId, arm.id))
+      .all().length;
+    return {
+      id: arm.id,
+      archetype: arm.archetype,
+      timeSlot: arm.timeSlot,
+      alpha: arm.alpha,
+      beta: arm.beta,
+      mean: arm.alpha / (arm.alpha + arm.beta),
+      n,
+      sample: sampleBeta(arm.alpha, arm.beta, rng),
+    };
+  });
+}
+
+export interface ArmDistribution {
+  id: string;
+  archetype: string;
+  timeSlot: string;
+  alpha: number;
+  beta: number;
+  mean: number;
+  recentRewards: number[];
+}
+
+/** α/β plus last-20 observation rewards — Track C Brain view consumes this. */
+export function getArmDistributions(worldId: string): ArmDistribution[] {
+  const arms = db.select().from(banditArms).where(eq(banditArms.worldId, worldId)).all();
+  return arms.map((arm) => {
+    const recentRewards = db
+      .select()
+      .from(banditObservations)
+      .where(eq(banditObservations.armId, arm.id))
+      .orderBy(desc(banditObservations.tick))
+      .all()
+      .slice(0, 20)
+      .map((o) => o.reward);
+    return {
+      id: arm.id,
+      archetype: arm.archetype,
+      timeSlot: arm.timeSlot,
+      alpha: arm.alpha,
+      beta: arm.beta,
+      mean: arm.alpha / (arm.alpha + arm.beta),
+      recentRewards,
+    };
+  });
 }
