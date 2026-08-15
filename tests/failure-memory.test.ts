@@ -141,4 +141,103 @@ describe("failure memory: retired rules stay retired", () => {
       .find((l) => l.actor === "coach" && l.action === "dedupe");
     expect(dedupeLog).toBeDefined();
   });
+
+  it("the coach cannot retire or amend a human-rejection rule", async () => {
+    const { worldId } = buildTinyWorld("failure-memory-3");
+    // land a rejection-sourced rule first
+    createPlaybookVersion(
+      worldId,
+      {
+        add: [
+          {
+            category: "content",
+            text: `Human rejection: "No discount talk." — do not propose this pattern again.`,
+            evidenceRefs: ["some-rejection"],
+            sourceType: "rejection",
+          },
+        ],
+        amend: [],
+        retire: [],
+      },
+      "coach",
+      10,
+    );
+    const constraint = getActiveRules(worldId).find((r) => /No discount talk/.test(r.text))!;
+    seedRejection(worldId); // gives the coach something to digest
+
+    const actual = await vi.importActual<typeof import("@/lib/agents/models")>("@/lib/agents/models");
+    mocks.callAgent.mockImplementation(async (role, schema, system, user, opts) => {
+      if (role === "coach") {
+        return {
+          ok: true as const,
+          data: CoachOutput.parse({
+            playbookChanges: {
+              add: [
+                {
+                  category: "voice",
+                  text: "A fresh legitimate lesson about tone.",
+                  evidenceRefs: [opts.refId],
+                  sourceType: "outcome",
+                },
+              ],
+              amend: [{ ruleKey: constraint.ruleKey, text: "watered-down version" }],
+              retire: [constraint.ruleKey], // the coach tries to remove the human constraint
+            },
+            changeSummary: "attempts to retire a human constraint",
+          }),
+        };
+      }
+      return actual.callAgent(role, schema, system, user, opts);
+    });
+
+    await runCoach(worldId, 24);
+
+    const after = getActiveRules(worldId).find((r) => r.ruleKey === constraint.ruleKey);
+    expect(after).toBeDefined(); // survived
+    expect(after!.text).toBe(constraint.text); // text untouched
+    const blocked = db
+      .select()
+      .from(activityLog)
+      .where(eq(activityLog.worldId, worldId))
+      .all()
+      .find((l) => l.action === "digest" && l.status === "blocked" && /human constraint/.test(l.summary));
+    expect(blocked).toBeDefined();
+  });
+
+  it("a rejection add resembling a retired rule is NOT deduped away (no livelock)", async () => {
+    const { worldId } = buildTinyWorld("failure-memory-4");
+    retireTimingRule(worldId); // failure memory now contains RETIRED_TEXT
+    const rejectionId = seedRejection(worldId);
+
+    const actual = await vi.importActual<typeof import("@/lib/agents/models")>("@/lib/agents/models");
+    mocks.callAgent.mockImplementation(async (role, schema, system, user, opts) => {
+      if (role === "coach") {
+        return {
+          ok: true as const,
+          data: CoachOutput.parse({
+            playbookChanges: {
+              add: [
+                {
+                  // near-identical to the retired rule, but sourced from a HUMAN
+                  // rejection — must survive dedupe or the rejection livelocks
+                  category: "timing",
+                  text: "Hypothesis: mornings perform best!",
+                  evidenceRefs: [rejectionId],
+                  sourceType: "rejection",
+                },
+              ],
+              amend: [],
+              retire: [],
+            },
+            changeSummary: "rejection distilled into a timing constraint",
+          }),
+        };
+      }
+      return actual.callAgent(role, schema, system, user, opts);
+    });
+
+    const { versionId } = await runCoach(worldId, 24);
+    expect(versionId).toBeTruthy();
+    expect(getActiveRules(worldId).some((r) => r.text === "Hypothesis: mornings perform best!")).toBe(true);
+  });
 });

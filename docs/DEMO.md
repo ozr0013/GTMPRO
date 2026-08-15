@@ -17,6 +17,14 @@ Target runtime 4:50, which is over the 5:00 ceiling if anything runs long — th
 to protect are **2:45 (the learning moment)** and **4:00 (the reveal)**. If you are losing
 time, cut 0:00 genesis and open on the pre-built world instead.
 
+**Two worlds, one story.** Scenes 0:00–2:45 run on the *fresh world genesis creates on
+camera* — it has no track record, so every proposal is human-gated and the approve/reject
+beats work. Scenes 2:15+ can also flip to the pre-built **TestBrew** (world switcher, top
+bar): twelve days in, its funnel reaches booked meetings, both Reveal dimensions read MATCH,
+and its approval queue is *empty* because the agent **earned autonomy** — which is the trust
+tour's punchline, not a bug: "this is the same system twelve days later; it earned the right
+to skip the queue, and here's the calibration record that justifies it."
+
 Platform is always called Pictogram on screen and out loud.
 
 ## 0:00 — Genesis onboarding

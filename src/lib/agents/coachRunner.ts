@@ -126,7 +126,8 @@ export async function runLibrarianConsolidation(
   );
   const changes: PlaybookChanges = {
     add: [], // consolidation never grows the playbook
-    amend: librarian.data.playbookChanges.amend,
+    // amends filtered too: consolidation must not water down a human constraint's text
+    amend: librarian.data.playbookChanges.amend.filter((a) => !rejectionKeys.has(a.ruleKey)),
     retire: librarian.data.playbookChanges.retire.filter((key) => !rejectionKeys.has(key)),
   };
 
@@ -312,23 +313,56 @@ export async function runCoach(worldId: string, tick: number): Promise<{ version
 
   // The coach re-derives the same lesson from the same report on consecutive
   // cycles; drop additions that restate a rule already in the playbook — or one
-  // that was recently retired (failure memory, not just dedupe).
-  const activeTexts = [
-    ...getActiveRules(worldId).map((r) => r.text),
-    ...recentlyRetired.map((r) => r.text),
-  ];
-  const deduped = dropDuplicateAdds(coach.data.playbookChanges.add, activeTexts);
-  const changes: PlaybookChanges = { ...coach.data.playbookChanges, add: deduped.kept };
+  // that was recently retired (failure memory, not just dedupe). EXCEPTION:
+  // rejection-sourced adds are deduped against ACTIVE rules only. If a fresh
+  // rejection's distilled text resembles a retired rule and got dropped for it,
+  // the rejection could never be addressed and would livelock as "blocked".
+  const activeOnly = getActiveRules(worldId).map((r) => r.text);
+  const activeAndRetired = [...activeOnly, ...recentlyRetired.map((r) => r.text)];
+  const rejectionAdds = coach.data.playbookChanges.add.filter((a) => a.sourceType === "rejection");
+  const otherAdds = coach.data.playbookChanges.add.filter((a) => a.sourceType !== "rejection");
+  const dedupedRejections = dropDuplicateAdds(rejectionAdds, activeOnly);
+  const dedupedOthers = dropDuplicateAdds(otherAdds, activeAndRetired);
+  const changes: PlaybookChanges = {
+    ...coach.data.playbookChanges,
+    add: [...dedupedRejections.kept, ...dedupedOthers.kept],
+  };
 
-  if (deduped.dropped.length > 0) {
+  const dropped = [...dedupedRejections.dropped, ...dedupedOthers.dropped];
+  if (dropped.length > 0) {
     logActivity({
       worldId,
       tick,
       actor: "coach",
       action: "dedupe",
       status: "ok",
-      summary: `Dropped ${deduped.dropped.length} rule(s) that restated an existing one`,
-      detail: deduped.dropped,
+      summary: `Dropped ${dropped.length} rule(s) that restated an existing or recently retired one`,
+      detail: dropped,
+    });
+  }
+
+  // Human constraints are inviolable here too, not just in the librarian: a
+  // rejection rule with a weak track record lands in rulesContradictedByEvidence
+  // and the coach will try to retire it — but addressed-ness scans ALL versions,
+  // so the rejection would still read "addressed" while the constraint silently
+  // vanished. Only a human may remove a human constraint.
+  const rejectionKeys = new Set(
+    getActiveRules(worldId)
+      .filter((r) => (r.evidence as { sourceType?: string })?.sourceType === "rejection")
+      .map((r) => r.ruleKey),
+  );
+  const blockedRetires = changes.retire.filter((key) => rejectionKeys.has(key));
+  changes.retire = changes.retire.filter((key) => !rejectionKeys.has(key));
+  changes.amend = changes.amend.filter((a) => !rejectionKeys.has(a.ruleKey));
+  if (blockedRetires.length > 0) {
+    logActivity({
+      worldId,
+      tick,
+      actor: "coach",
+      action: "digest",
+      status: "blocked",
+      summary: `Refused to retire ${blockedRetires.length} human-rejection rule(s) — only a human may remove a human constraint`,
+      detail: { blockedRetires },
     });
   }
 
@@ -343,7 +377,8 @@ export async function runCoach(worldId: string, tick: number): Promise<{ version
     }));
   const converged = collapseConvergedRules(projected, (key) => perf.get(key)?.citations ?? 0);
   if (converged.retire.length > 0) {
-    changes.retire = [...changes.retire, ...converged.retire];
+    // same human-constraint guard on the convergence-collapse path
+    changes.retire = [...changes.retire, ...converged.retire.filter((key) => !rejectionKeys.has(key))];
     logActivity({
       worldId,
       tick,

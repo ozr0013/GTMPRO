@@ -381,7 +381,7 @@ async function processAction(
       actor: "system",
       action: "earned_autonomy",
       status: "ok",
-      summary: `Auto-approved without the human gate: calibration hit-rate ${Math.round((gate.earnedAutonomy.hitRate ?? 0) * 100)}% over the last ${gate.earnedAutonomy.reports >= 5 ? 5 : gate.earnedAutonomy.reports} scored posts`,
+      summary: `Auto-approved without the human gate: calibration hit-rate ${Math.round((gate.earnedAutonomy.hitRate ?? 0) * 100)}% over the last 5 scored posts`,
       refType: "proposal",
       refId: id,
       detail: gate.earnedAutonomy,

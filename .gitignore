@@ -40,6 +40,7 @@ yarn-error.log*
 # flywheel local state
 flywheel.db
 flywheel.db-*
+flywheel.backup-*
 public/generated/
 .worktrees/
 # demo-snapshot.db itself is committed (C5); its WAL sidecars are not

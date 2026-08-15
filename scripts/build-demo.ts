@@ -51,11 +51,12 @@ async function main() {
   const { worldId } = await generateWorld(
     "Cold brew concentrate for coffee obsessives who care about extraction",
     // Seed chosen so the snapshot actually contains the beats DEMO.md needs: the
-    // funnel reaches a booked meeting, and the bandit converges on the archetype
-    // the hidden config really rewards. Other seeds converge on one or neither —
-    // this is demo-dataset selection, not a thumb on the scale: the agent still
-    // has to discover it, and the reveal reports the dimension it got wrong.
-    { name: "TestBrew", seed: process.argv[3] ?? "flywheel-3" },
+    // funnel reaches a booked meeting, the bandit converges on what the hidden
+    // config really rewards (both reveal dimensions MATCH), and calibration earns
+    // autonomy. Other seeds converge on fewer — this is demo-dataset selection,
+    // not a thumb on the scale: the agent still has to discover everything, and
+    // the reveal honestly reports any dimension it gets wrong.
+    { name: "TestBrew", seed: process.argv[3] ?? "flywheel-1" },
   );
 
   // Seed a first proposal so day 1 has something to publish; after this the clock's
@@ -110,7 +111,9 @@ async function main() {
   console.log(`\n--- demo beats ---`);
   const rejectionRule = playbook.rules.find((r) => r.evidence.sourceType === "rejection");
   console.log(`rejection -> rule : ${rejectionRule ? `YES — "${rejectionRule.text.slice(0, 70)}"` : "NO"}`);
-  console.log(`pending proposal  : ${pending.length > 0 ? "YES" : "NO (run a heartbeat on camera)"}`);
+  console.log(
+    `pending proposal  : ${pending.length > 0 ? "YES" : "none here — EXPECTED once autonomy is earned; scenes 0:45-1:30 run on the fresh world genesis creates on camera"}`,
+  );
   console.log(`meeting booked    : ${(funnel.find((s) => s.stage === "Meetings")?.count ?? 0) > 0 ? "YES" : "NO"}`);
   for (const d of reveal.dimensions) {
     console.log(
@@ -119,6 +122,24 @@ async function main() {
   }
   const tracked = playbook.rules.filter((r) => r.track).length;
   console.log(`rules with measured track record: ${tracked}/${playbook.rules.length}`);
+
+  // the three long-term-learning beats added on submission day
+  console.log(
+    `earned autonomy   : ${world.earnedAutonomy ? `YES (hit rate ${Math.round((world.earnedAutonomyHitRate ?? 0) * 100)}%)` : `NO (hit rate ${Math.round((world.earnedAutonomyHitRate ?? 0) * 100)}% — beat falls back to the trail events)`}`,
+  );
+  const dreamed = pending.filter((p) => p.kind === "post" && p.dream).length;
+  const pendingPosts = pending.filter((p) => p.kind === "post").length;
+  console.log(
+    `dream chips       : ${pendingPosts === 0 ? "n/a (no pending posts — heartbeat on camera will carry them)" : dreamed > 0 ? `YES (${dreamed}/${pendingPosts} pending posts)` : "NO"}`,
+  );
+  const { activityLog } = await import("@/lib/db/schema");
+  const consolidations = db
+    .select()
+    .from(activityLog)
+    .where(eq(activityLog.worldId, worldId))
+    .all()
+    .filter((l) => l.action === "consolidate" && l.status === "ok").length;
+  console.log(`librarian runs    : ${consolidations > 0 ? `YES (${consolidations})` : "not triggered (playbook stayed under the cap — fine)"}`);
 }
 
 main().catch((e) => {

@@ -6,6 +6,7 @@ import { runHeartbeat, decideProposal } from "@/lib/agents/orchestrator";
 import { getPlaybookHistory } from "@/lib/learning/playbook";
 import { advanceTicks } from "@/lib/sim/clock";
 import { eq, and, desc } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 
 describe("walking skeleton: full loop in mock mode", () => {
   it("heartbeat → proposal → approve → publish → outcomes → analyst → coach → new playbook version", async () => {
@@ -62,6 +63,66 @@ describe("walking skeleton: full loop in mock mode", () => {
       reason: "Too salesy; we never lead with product pushes.",
     });
     await advanceTicks(worldId, 24); // day boundary: coach digests the rejection
+
+    // Regression guard: populate the rule track record BEFORE the next heartbeat.
+    // Its context lines also start with "[ruleKey]", and a parser that reads past
+    // the playbook section resolves "newest" to the best-performing OLD rule —
+    // which silently broke this exact demo beat once any post was scored.
+    const seededPost = randomUUID();
+    const seededProposal = randomUUID();
+    db.insert(proposals)
+      .values({
+        id: seededProposal,
+        worldId,
+        kind: "post",
+        status: "executed",
+        payload: {
+          archetype: "education",
+          timeSlot: "morning",
+          topic: "brewing-science",
+          caption: "scored post",
+          hashtags: [],
+          creativeBrief: "b",
+          scheduledTick: 7,
+        },
+        reasoning: "seed",
+        evidence: { ruleIds: ["timing-1", "content-1"], signals: [] },
+        predictedEffect: { impressions: [8, 60], likes: [2, 40], linkClicks: [0, 4], signups: [0, 2] },
+        riskClass: "normal",
+        createdTick: 7,
+        decidedTick: 7,
+      })
+      .run();
+    db.insert(posts)
+      .values({
+        id: seededPost,
+        worldId,
+        authorType: "brand",
+        proposalId: seededProposal,
+        archetype: "education",
+        topic: "brewing-science",
+        caption: "scored post",
+        hashtags: [],
+        creativeBrief: "b",
+        scheduledTick: 7,
+        publishedTick: 7,
+        status: "published",
+      })
+      .run();
+    db.insert(outcomeReports)
+      .values({
+        id: randomUUID(),
+        worldId,
+        postId: seededPost,
+        windowTicks: 24,
+        actual: { impressions: 12, likes: 4, linkClicks: 1, signups: 0 },
+        predicted: { impressions: [8, 60], likes: [2, 40], linkClicks: [0, 4], signups: [0, 2] },
+        verdict: "met",
+        attribution: [],
+        summary: "seed",
+        tick: 24,
+      })
+      .run();
 
     const history = getPlaybookHistory(worldId);
     const newest = history[history.length - 1];

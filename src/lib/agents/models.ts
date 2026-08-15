@@ -143,9 +143,16 @@ export async function callAgent<T>(
 /** Rule keys from the "Playbook rules:" section of a rendered strategist context.
  * Order matches the playbook: seed rules first, coach additions appended — so the
  * last keys are the newest learning. Delimiters match renderContext's exact
- * header lines so rule text mentioning "Bandit arms" cannot truncate the scan. */
+ * header lines, and the scan MUST stop at the track-record section: its lines
+ * also start with "[ruleKey]" and are performance-ordered, so leaking them in
+ * made "newest" resolve to the best-performing OLD rule once anything was
+ * scored — silently breaking the demo's closure beat. */
 function contextRuleKeys(user: string): string[] {
-  const section = user.split("Playbook rules:\n")[1]?.split("\nBandit arms (cite banditArmId")[0] ?? "";
+  const section =
+    user
+      .split("Playbook rules:\n")[1]
+      ?.split("\nRule track record")[0]
+      ?.split("\nBandit arms (cite banditArmId")[0] ?? "";
   return [...section.matchAll(/^\[([\w-]+)\]/gm)].map((m) => m[1]);
 }
 
@@ -178,7 +185,10 @@ function mockFor(role: AgentRole, opts: { worldSeed: string; refId: string }, us
             angle: `A ${archetype} angle on brewing science`,
             reasoning: `Bandit favors ${archetype}/${timeSlot}; applying playbook ${cited.join(" and ")}.`,
             evidenceRuleIds: cited,
-            predictedEffect: { impressions: [15, 30], likes: [3, 8], linkClicks: [1, 3], signups: [0, 1] },
+            // Wide-but-honest ranges that hold at both fixture scale (12 personas,
+            // ~12 impressions) and demo scale (100 personas, ~40): a mock that
+            // always misses can never demonstrate calibration-earned autonomy.
+            predictedEffect: { impressions: [8, 60], likes: [2, 40], linkClicks: [0, 4], signups: [0, 2] },
             riskClass: "normal",
           },
         ],
