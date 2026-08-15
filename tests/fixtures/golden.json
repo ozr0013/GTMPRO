@@ -14,14 +14,14 @@
   "funnel": {
     "dm_started": 1,
     "link_click": 3,
-    "meeting_booked": 7
+    "meeting_booked": 1
   },
   "dmThreads": {
     "qualified": 1
   },
-  "dmMessages": 8,
+  "dmMessages": 2,
   "proposals": {
-    "executed": 12
+    "executed": 6
   },
   "playbookVersionCount": 5,
   "activeRuleCount": 7,
