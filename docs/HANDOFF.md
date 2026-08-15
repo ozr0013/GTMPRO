@@ -1,10 +1,12 @@
 # Handoff
 
-Last updated: 2026-08-14 evening. State: **walking skeleton complete and pushed to main.**
+Last updated: 2026-08-15 (submission day). State: **feature-complete for the demo; live-local validated.**
 
 ## What works right now (mock mode, no API keys)
 
 The full loop runs end-to-end: `Run heartbeat` → Strategist proposes (citing playbook rules + bandit stats, predicting effect ranges) → approval card → Approve/Reject/Edit → publisher schedules → advancing the clock publishes the post, personas engage (hidden-ground-truth engine), funnel fires (clicks → signups → DMs), community qualifies DMs toward meetings, the Analyst grades outcomes vs predictions at each day boundary, the Coach writes a new playbook version, and the next heartbeat behaves differently. Genesis builds ~100-persona worlds from any product description. Ambient competitor accounts post noise into the feed.
+
+Submission-day additions: **the loop closure is real in every mode** — a typed rejection becomes a `rejection`-sourced playbook rule and the very next proposal cites the new rule key (regression-tested in `tests/loop.test.ts`); the analyst's attribution + suggested lessons feed the coach digest; `/brain` gained a spoiler-gated **Reveal** tab comparing the hidden world config (affinity × active hours, algo levers) against learned posteriors and rules, with a champion-vs-truth verdict. **Live-local (Ollama) is validated** — see `docs/PROGRESS.md` B6 row and the live-local runbook in `docs/DEMO.md`. Suite: 72 tests / 22 files.
 
 ## Run it
 

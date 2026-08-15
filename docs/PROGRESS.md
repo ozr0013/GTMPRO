@@ -39,7 +39,7 @@ Track A complete.
 | B3 edit-distillation (wordDiff in coach) | done | tests/edit-distillation.test.ts |
 | B4 autopilot + expiry + budgets | done | publisher.ts expireStaleProposals wired into clock day-boundary |
 | B5 rollback + quarantine surfacing | done | orchestrator getQuarantined/rollbackPlaybook + tests |
-| B6 local models (NEW, owner: Minh) | todo | code + runbook landed (docs/LOCAL_MODELS.md); Minh: install Ollama, pull tier models, run smoke + e2e-drive live-local, report results |
+| B6 local models (NEW, owner: Minh) | done (validated by Anurup, 08-15) | smoke: 3/3 PASS (qwen3:8b / gemma3:12b / qwen3:4b). e2e-drive live-local on M1 Max 32GB: genesis + 2 sim days in 22.9 min, **zero quarantines**, all 7 actors ran, full funnel (33 impressions → 1 signup), playbook v2. Weaknesses found and fixed same day: rejection-only digest → "no changes" (prompt hardened, mandatory add), hallucinated dm_reply with no open thread (guard in `processAction` + prompt). Recheck run in `/tmp/e2e-recheck.log` |
 
 ## Track C — Mission Control UX (owner: Omar)
 
@@ -88,6 +88,17 @@ read tokens, so restyling happens there, not in page files.
 - Note: `<html>` must not carry `h-full` — pinning it to the viewport breaks the
   scroll container that the sticky masthead resolves against.
 
+## Final push (2026-08-15, submission day — Anurup)
+
+| Item | Status | Notes |
+|---|---|---|
+| Learning closure: mocks read their inputs | done | mock strategist cites the newest rule keys parsed from the rendered context (was: hardcoded `timing-1`); mock coach parses the digest JSON — rejections become `sourceType: "rejection"` rules echoing the typed reason, edits keep the hashtag rule, outcomes summarize verdicts |
+| Analyst dead-ends removed | done | `suggestedLessons` persisted on `outcome_reports` (migration 0001 + `ensureColumns` guard for pre-existing DBs); `attribution` + lessons now included in the coach digest |
+| Closure regression test | done | `tests/loop.test.ts`: rejection → coach rule (with the human's words) → **next proposal cites the new rule key** — the headline claim now has a test |
+| Ground-truth Reveal tab on `/brain` | done | `getGroundTruthReveal` (queries.ts): audience-weighted affinity × active-hours truth score per arm vs bandit posteriors, champion-vs-truth verdict, affinity matrix, slot activity, algo levers, learned rules — behind a spoiler button. Tests incl. genesis-scale invariants |
+| Live hardening from B6 findings | done | dm_reply-without-open-thread dropped at proposal time (+ gates test); strategist prompt: cite newest rules, dm_reply only for listed threads; coach prompt: rejections/edits ALWAYS produce a change, prefer add |
+| Suite | green | 72 tests / 22 files; golden unchanged (verified — mock changes don't shift sim aggregates) |
+
 ## Shared-file change announcements (additive-only rule)
 
 - 2026-08-14: `src/lib/contracts.ts` + `GenesisOutput`; `src/lib/types.ts` + `AmbientAccount`, `WorldConfig.ambient?`; `src/lib/agents/models.ts` + `genesis` role (Track A / A1).
@@ -118,4 +129,5 @@ read tokens, so restyling happens there, not in page files.
   states the pillars and `groundTopic()` snaps off-list topics back with a `topic_snap`
   activity entry. Minh: if you'd rather reject the action than snap it, that's a one-line
   change in `groundTopic`.
+- 2026-08-15 (final push): `src/lib/db/schema.ts` + `outcomeReports.suggestedLessons` (nullable JSON; migration `drizzle/0001_*.sql`; `db/client.ts` bootstrap gained an idempotent `ensureColumns` guard so pre-existing DBs — incl. the committed snapshot — pick the column up). `src/lib/db/queries.ts` (Track C) + `getGroundTruthReveal`. `src/lib/agents/models.ts` (Track B): mock strategist/coach now derive outputs from their inputs (context rule keys / digest JSON) — mock reasoning strings changed, golden aggregates verified unchanged. `src/lib/agents/orchestrator.ts` (Track B): dm_reply proposals naming no open thread are dropped with a blocked trail entry. `src/lib/agents/prompts.ts` (Track B): strategist + coach hardening for small local models.
 - 2026-08-14 (team merge): minh-agent and oz/track-c-mission-control merged into main with track-owner priority. New modules: `agents/publisher.ts`, `agents/log.ts` (object-form `logActivity`), `learning/calibration.ts`, `sim/{time,metrics,streams}.ts`, `app/current-world.ts`. Interface changes: `runCommunityPass(worldId)` replaces `runCommunity(worldId, tick)`; `logActivity` moved to `agents/log.ts`; `generateWorld(productDescription, { seed?, name? })` now returns `{ worldId, segments, topics }`; engine RNG streams keyed by `postStreamKey(post)` (content/slot) instead of post id.
