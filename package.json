@@ -17,6 +17,7 @@
     "demo": "tsx scripts/demo.ts",
     "slack:test": "tsx scripts/slack-test.ts",
     "images:test": "tsx scripts/images-test.ts",
+    "images:server": "python scripts/image-server.py",
     "demo:build": "tsx scripts/build-demo.ts",
     "prewarm": "tsx scripts/prewarm-demo.ts",
     "smoke": "tsx scripts/smoke-models.ts"

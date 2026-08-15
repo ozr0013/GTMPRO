@@ -32,14 +32,20 @@ export function imageBaseUrl(): string {
   return (process.env.IMAGE_BASE_URL ?? fallback).replace(/\/$/, "");
 }
 
-/** Steps/size are tuned for an 8 GB laptop GPU; override per machine. */
+/**
+ * Defaults match the bundled server (`npm run images:server`, SD-Turbo): 512²,
+ * 4 steps, low guidance. Running a full SDXL checkpoint through real A1111
+ * instead? Set IMAGE_WIDTH/HEIGHT=1024, IMAGE_STEPS=28, IMAGE_CFG=6 — SDXL at
+ * 512 produces the classic duplicated-subject artefact, and a Turbo model at
+ * 28 steps with guidance produces mush.
+ */
 function tuning() {
   return {
     model: process.env.IMAGE_MODEL?.trim() || undefined,
-    steps: Number(process.env.IMAGE_STEPS ?? 28),
-    width: Number(process.env.IMAGE_WIDTH ?? 1024),
-    height: Number(process.env.IMAGE_HEIGHT ?? 1024),
-    cfg: Number(process.env.IMAGE_CFG ?? 6),
+    steps: Number(process.env.IMAGE_STEPS ?? 4),
+    width: Number(process.env.IMAGE_WIDTH ?? 512),
+    height: Number(process.env.IMAGE_HEIGHT ?? 512),
+    cfg: Number(process.env.IMAGE_CFG ?? 2),
     sampler: process.env.IMAGE_SAMPLER?.trim() || "DPM++ 2M Karras",
     negative:
       process.env.IMAGE_NEGATIVE?.trim() ||
