@@ -68,13 +68,35 @@ The playbook is full-copy versioned: human-editable, diffable, and revertible, w
 
 ## Quickstart
 
+Two commands, no API keys, no build tools, works offline:
+
 ```bash
-asdf install                 # Node 22.23.2 (pinned in .tool-versions)
-cp .env.example .env.local   # mock mode needs NO API keys — and live mode doesn't either
-npm i
-npm run db:seed              # schema self-bootstraps; seeds a demo world
-npm run dev                  # http://localhost:3000
+npm install
+npm run demo                 # http://localhost:3000
 ```
+
+`npm run demo` resets a throwaway copy of the committed demo world and starts in
+mock mode, so it comes up instantly and every run starts from the same state.
+Verified on a clean clone: 128 tests pass and the app serves without Xcode,
+Visual Studio, or any C++ toolchain installed.
+
+To start from an empty database and grow a world yourself instead:
+
+```bash
+cp .env.example .env.local   # mock mode needs NO API keys — and live mode doesn't either
+npm run dev                  # then click "New World"
+```
+
+<details>
+<summary>Why <code>.npmrc</code> sets <code>ignore-scripts=true</code></summary>
+
+`better-sqlite3` ships prebuilt binaries for every platform we target, but it also
+contains a `binding.gyp` — and npm's default install step for any package with one
+is `node-gyp rebuild`. So a plain install tries to compile from source and dies on
+a machine without a C++ toolchain (`gyp ERR! find VS  Could not find any Visual
+Studio installation`), to produce a binary that was already in the tarball.
+Skipping install scripts uses the prebuilt one.
+</details>
 
 Everything runs offline in mock mode (`MODEL_MODE=mock`, the default): heartbeat, approvals, simulation, learning. For live model calls — still zero API keys — install [Ollama](https://ollama.com), pull your RAM tier's models (`ollama pull qwen3:8b gemma3:12b qwen3:4b` on 16-32 GB), start it with `OLLAMA_KEEP_ALIVE=45m ollama serve`, set `MODEL_MODE=live` in `.env.local`, and validate with `npm run smoke`. Full runbook: `docs/LOCAL_MODELS.md`.
 

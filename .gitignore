@@ -58,3 +58,7 @@ e2e-local.log
 advance.log
 demo-run.db
 demo-run.db-*
+
+demo.log
+dev.log
+images.log
