@@ -1,0 +1,1 @@
+ALTER TABLE `outcome_reports` ADD `suggested_lessons` text;

@@ -3,6 +3,7 @@ import { buildTinyWorld } from "./fixtures/world";
 import { db } from "@/lib/db/client";
 import { proposals, posts, engagements, outcomeReports, playbookVersions, activityLog } from "@/lib/db/schema";
 import { runHeartbeat, decideProposal } from "@/lib/agents/orchestrator";
+import { getPlaybookHistory } from "@/lib/learning/playbook";
 import { advanceTicks } from "@/lib/sim/clock";
 import { eq, and, desc } from "drizzle-orm";
 
@@ -47,5 +48,43 @@ describe("walking skeleton: full loop in mock mode", () => {
     await advanceTicks(worldId, 24);
     const v = db.select().from(playbookVersions).where(eq(playbookVersions.worldId, worldId)).orderBy(desc(playbookVersions.version)).all();
     expect(v[0].version).toBeGreaterThanOrEqual(2); // coach ran on the rejection even with no outcomes
+  });
+
+  // The headline claim: learning visibly changes behavior. A typed rejection
+  // becomes a playbook rule, and the very next proposal cites that rule by key.
+  it("the next proposal cites the rule learned from the previous rejection", async () => {
+    const { worldId } = buildTinyWorld("loop-seed-3");
+    const hb1 = await runHeartbeat(worldId);
+    const first = db.select().from(proposals).where(eq(proposals.id, hb1.proposalIds[0])).get()!;
+    const citedBefore = (first.evidence as { ruleIds: string[] }).ruleIds;
+
+    await decideProposal(hb1.proposalIds[0], "reject", {
+      reason: "Too salesy; we never lead with product pushes.",
+    });
+    await advanceTicks(worldId, 24); // day boundary: coach digests the rejection
+
+    const history = getPlaybookHistory(worldId);
+    const newest = history[history.length - 1];
+    expect(newest.authorType).toBe("coach");
+    const added = newest.diff.added;
+    expect(added.length).toBeGreaterThan(0);
+
+    // the human's own words became policy
+    const rejectionRule = added.find(
+      (r) => (r.evidence as { sourceType?: string }).sourceType === "rejection",
+    );
+    expect(rejectionRule).toBeTruthy();
+    expect(rejectionRule!.text).toContain("Too salesy");
+
+    // and the very next proposal cites the new rule by key
+    const hb2 = await runHeartbeat(worldId);
+    const nextPost = hb2.proposalIds
+      .map((id) => db.select().from(proposals).where(eq(proposals.id, id)).get()!)
+      .find((p) => p.kind === "post")!;
+    expect(nextPost).toBeTruthy();
+    const citedAfter = (nextPost.evidence as { ruleIds: string[] }).ruleIds;
+    const addedKeys = added.map((r) => r.ruleKey);
+    expect(citedAfter.some((k) => addedKeys.includes(k))).toBe(true);
+    expect(citedAfter).not.toEqual(citedBefore);
   });
 });

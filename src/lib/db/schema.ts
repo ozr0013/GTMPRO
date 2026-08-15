@@ -156,6 +156,8 @@ export const outcomeReports = sqliteTable("outcome_reports", {
   predicted: text("predicted", { mode: "json" }).notNull(),
   verdict: text("verdict").notNull(), // exceeded | met | missed
   attribution: text("attribution", { mode: "json" }).notNull(),
+  // analyst's testable lesson candidates — fed to the coach digest (nullable: rows predate the column)
+  suggestedLessons: text("suggested_lessons", { mode: "json" }),
   summary: text("summary").notNull(),
   tick: integer("tick").notNull(),
 });

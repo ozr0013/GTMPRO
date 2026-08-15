@@ -8,6 +8,13 @@
       "when": 1786749602448,
       "tag": "0000_sparkling_penance",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1786803762559,
+      "tag": "0001_perfect_secret_warriors",
+      "breakpoints": true
     }
   ]
 }

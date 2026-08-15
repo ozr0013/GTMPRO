@@ -133,13 +133,27 @@ export async function callAgent<T>(
   return { ok: false, error: "unreachable" };
 }
 
-/** Seeded, schema-valid canned outputs so the full loop runs offline. */
+/** Rule keys from the "Playbook rules:" section of a rendered strategist context.
+ * Order matches the playbook: seed rules first, coach additions appended — so the
+ * last keys are the newest learning. */
+function contextRuleKeys(user: string): string[] {
+  const section = user.split("Playbook rules:")[1]?.split("Bandit arms")[0] ?? "";
+  return [...section.matchAll(/^\[([\w-]+)\]/gm)].map((m) => m[1]);
+}
+
+/** Seeded, schema-valid canned outputs so the full loop runs offline. The mocks
+ * read their inputs the way the live models would (rules from the rendered
+ * context, digests as JSON) so learning visibly changes behavior even offline. */
 function mockFor(role: AgentRole, opts: { worldSeed: string; refId: string }, user = ""): unknown {
   const rng = subRng(opts.worldSeed, "mock", role, opts.refId);
   const archetype = pick(rng, ["education", "story", "meme", "product"] as const);
   const timeSlot = pick(rng, ["morning", "midday", "evening"] as const);
   switch (role) {
-    case "strategist":
+    case "strategist": {
+      // Cite the newest playbook rules (last in the context list) so a rule the
+      // coach just learned shows up in the very next proposal's evidence.
+      const known = contextRuleKeys(user);
+      const cited = known.length > 0 ? known.slice(-2).reverse() : ["timing-1"];
       return StrategistOutput.parse({
         actions: [
           {
@@ -148,14 +162,15 @@ function mockFor(role: AgentRole, opts: { worldSeed: string; refId: string }, us
             timeSlot,
             topic: "brewing-science",
             angle: `A ${archetype} angle on brewing science`,
-            reasoning: `Mock: bandit favors ${archetype}/${timeSlot}; playbook timing-1 suggests mornings.`,
-            evidenceRuleIds: ["timing-1"],
+            reasoning: `Bandit favors ${archetype}/${timeSlot}; applying playbook ${cited.join(" and ")}.`,
+            evidenceRuleIds: cited,
             predictedEffect: { impressions: [15, 30], likes: [3, 8], linkClicks: [1, 3], signups: [0, 1] },
             riskClass: "normal",
           },
         ],
-        strategyNote: "Mock strategy: explore education content.",
+        strategyNote: `Explore ${archetype} content in the ${timeSlot} slot.`,
       });
+    }
     case "copywriter":
       return CopywriterOutput.parse({
         caption: `Mock caption ${opts.refId.slice(0, 6)}: water temperature changes everything about extraction.`,
@@ -179,40 +194,80 @@ function mockFor(role: AgentRole, opts: { worldSeed: string; refId: string }, us
         suggestedLessons: [{ category: "timing", text: "Morning education posts outperform.", confidence: 0.7 }],
       });
     case "coach": {
-      const editLike =
-        /hashtag|word-diff|humanEditDiff|sourceType["']?\s*:\s*["']?edit/i.test(user) ||
-        /-\s*#\w+/.test(user);
-      if (editLike) {
-        return CoachOutput.parse({
-          playbookChanges: {
-            add: [
-              {
+      // The coach digest arrives as JSON (see coachRunner). Read it like the
+      // live coach would: each kind of evidence becomes a targeted rule, and a
+      // typed rejection reason is echoed into the rule so the human can see
+      // their own words become policy.
+      type Digest = {
+        outcomeReports?: { verdict?: string }[];
+        rejections?: { proposalId: string; reason: string }[];
+        edits?: { proposalId: string }[];
+      };
+      let digest: Digest | null = null;
+      try {
+        digest = JSON.parse(user) as Digest;
+      } catch {
+        digest = null; // non-digest input (direct-call unit tests)
+      }
+      type Add = {
+        category: "voice" | "content" | "timing" | "audience" | "guardrail";
+        text: string;
+        evidenceRefs: string[];
+        sourceType: "outcome" | "rejection" | "edit";
+      };
+      const add: Add[] = [];
+      if (digest?.edits?.length) {
+        add.push({
+          category: "voice",
+          text: "Keep hashtag count low; do not lead with hashtag dumps.",
+          evidenceRefs: digest.edits.map((e) => e.proposalId),
+          sourceType: "edit",
+        });
+      }
+      if (digest?.rejections?.length) {
+        const reason = digest.rejections[0].reason?.trim() || "rejected without a stated reason";
+        add.push({
+          category: "content",
+          text: `Human rejection: "${reason.slice(0, 90)}" — do not propose this pattern again.`,
+          evidenceRefs: digest.rejections.map((r) => r.proposalId),
+          sourceType: "rejection",
+        });
+      }
+      if (digest?.outcomeReports?.length) {
+        const total = digest.outcomeReports.length;
+        const beat = digest.outcomeReports.filter((r) => r.verdict === "exceeded").length;
+        add.push({
+          category: "timing",
+          text: `Outcome digest ${opts.refId}: ${beat}/${total} posts beat predictions — keep education posts in the morning slot.`,
+          evidenceRefs: [opts.refId],
+          sourceType: "outcome",
+        });
+      }
+      if (add.length === 0) {
+        // Legacy path for non-JSON digests: preserve the old regex heuristics.
+        const editLike =
+          /hashtag|word-diff|humanEditDiff|sourceType["']?\s*:\s*["']?edit/i.test(user) ||
+          /-\s*#\w+/.test(user);
+        add.push(
+          editLike
+            ? {
                 category: "voice",
                 text: "Keep hashtag count low; do not lead with hashtag dumps.",
                 evidenceRefs: [opts.refId],
                 sourceType: "edit",
+              }
+            : {
+                category: "timing",
+                text: `Learned rule ${opts.refId.slice(0, 6)}: prefer morning education posts.`,
+                evidenceRefs: [opts.refId],
+                sourceType: "outcome",
               },
-            ],
-            amend: [],
-            retire: [],
-          },
-          changeSummary: "Mock: +1 voice rule from human edit (hashtags)",
-        });
+        );
       }
+      const sources = [...new Set(add.map((a) => a.sourceType))].join(" + ");
       return CoachOutput.parse({
-        playbookChanges: {
-          add: [
-            {
-              category: "timing",
-              text: `Mock learned rule ${opts.refId.slice(0, 6)}: prefer morning education posts.`,
-              evidenceRefs: [opts.refId],
-              sourceType: "outcome",
-            },
-          ],
-          amend: [],
-          retire: [],
-        },
-        changeSummary: "Mock: +1 timing rule from outcomes",
+        playbookChanges: { add, amend: [], retire: [] },
+        changeSummary: `+${add.length} rule${add.length === 1 ? "" : "s"} from ${sources}`,
       });
     }
     case "community":

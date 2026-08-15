@@ -72,6 +72,7 @@ export async function runAnalyst(worldId: string, tick: number): Promise<{ repor
 
     const verdict = analysis.ok ? analysis.data.verdict : "met";
     const attribution = analysis.ok ? analysis.data.attribution : [];
+    const suggestedLessons = analysis.ok ? analysis.data.suggestedLessons : [];
     const summary = analysis.ok ? analysis.data.summary : analysis.error;
 
     const id = randomUUID();
@@ -85,6 +86,7 @@ export async function runAnalyst(worldId: string, tick: number): Promise<{ repor
         predicted,
         verdict,
         attribution,
+        suggestedLessons,
         summary,
         tick,
       })

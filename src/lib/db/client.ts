@@ -15,7 +15,10 @@ function bootstrap(sqlite: Database.Database) {
   const hasWorlds = sqlite
     .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='worlds'")
     .get();
-  if (hasWorlds) return;
+  if (hasWorlds) {
+    ensureColumns(sqlite);
+    return;
+  }
   const dir = path.join(process.cwd(), "drizzle");
   const files = fs.readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
   for (const file of files) {
@@ -24,6 +27,16 @@ function bootstrap(sqlite: Database.Database) {
       const trimmed = statement.trim();
       if (trimmed) sqlite.exec(trimmed);
     }
+  }
+}
+
+/** Additive column guard for DBs created before a later migration landed —
+ * bootstrap only replays ./drizzle on empty files, and committed snapshots
+ * (demo-snapshot.db) predate newer columns. Idempotent. */
+function ensureColumns(sqlite: Database.Database) {
+  const cols = sqlite.prepare("PRAGMA table_info(outcome_reports)").all() as { name: string }[];
+  if (!cols.some((c) => c.name === "suggested_lessons")) {
+    sqlite.exec("ALTER TABLE outcome_reports ADD COLUMN suggested_lessons text");
   }
 }
 

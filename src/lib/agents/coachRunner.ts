@@ -121,6 +121,10 @@ export async function runCoach(worldId: string, tick: number): Promise<{ version
       summary: r.summary,
       actual: r.actual,
       predicted: r.predicted,
+      // the analyst's factor attribution and testable lessons are the coach's
+      // richest signal — without them rule quality falls back to verdict-only
+      attribution: r.attribution,
+      suggestedLessons: r.suggestedLessons ?? [],
     })),
     rejections,
     edits,
