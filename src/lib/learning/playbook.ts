@@ -171,3 +171,20 @@ export function rollbackTo(worldId: string, targetVersion: number, tick: number)
   }
   return { versionId: res.versionId };
 }
+
+/** Versions with diffs vs parent — Track C Brain view wraps this; we don't own queries.ts. */
+export function getPlaybookHistory(worldId: string) {
+  const versions = db
+    .select()
+    .from(playbookVersions)
+    .where(eq(playbookVersions.worldId, worldId))
+    .orderBy(playbookVersions.version)
+    .all();
+  return versions.map((v) => ({
+    ...v,
+    diff:
+      v.parentVersion != null
+        ? diffVersions(worldId, v.parentVersion, v.version)
+        : { added: [], amended: [], retired: [] as string[] },
+  }));
+}

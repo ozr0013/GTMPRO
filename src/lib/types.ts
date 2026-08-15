@@ -52,6 +52,7 @@ export interface PostPayload {
 export interface DmReplyPayload {
   threadId: string;
   text: string;
+  qualification?: "continue" | "meeting_booked" | "disqualified";
 }
 
 export interface ReplyPayload {

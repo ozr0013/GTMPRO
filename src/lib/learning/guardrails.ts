@@ -51,3 +51,14 @@ export function checkGuardrails(worldId: string, action: GuardrailAction) {
   const requiresApproval = s.mode === "propose" || action.riskClass === "sensitive";
   return { allowed: reasons.length === 0, requiresApproval, reasons };
 }
+
+/** Decrement imageBudget by 1. Track C art director is the only spender. */
+export function spendImageBudget(worldId: string): { ok: boolean } {
+  const s = db.select().from(settings).where(eq(settings.worldId, worldId)).get()!;
+  if (s.imageBudget <= 0) return { ok: false };
+  db.update(settings)
+    .set({ imageBudget: s.imageBudget - 1 })
+    .where(eq(settings.worldId, worldId))
+    .run();
+  return { ok: true };
+}
