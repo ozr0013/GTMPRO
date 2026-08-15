@@ -49,3 +49,4 @@ demo-snapshot.db-*
 *.tsbuildinfo
 next-env.d.ts
 e2e-local.log
+advance.log
