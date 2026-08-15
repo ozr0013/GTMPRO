@@ -1,5 +1,7 @@
 # Flywheel
 
+🥉 **3rd place — AI Builders Day 2**
+
 **A self-improving organic-social GTM agent** — built for the MadeThis "Build a Self-Improving GTM Agent" bounty.
 
 Type any product description. Flywheel spins up **Pictogram** — a simulated Instagram-like platform with ~100 audience personas whose interests, skepticism, purchase intent, and daily rhythms are *hidden ground truth* — then a team of cross-family AI agents grows that product's account from zero: posting, replying, qualifying DMs, and booking meetings. Every outcome, human approval, rejection, and edit feeds a versioned playbook and Thompson-sampling bandits, and the agent's next actions **visibly change**. The endgame demo move: reveal the hidden config and show the agent discovered the audience's true preferences.
@@ -129,4 +131,4 @@ End-to-end GTM impact: full simulated funnel to booked meetings · Learning loop
 - Twin-world frozen-baseline benchmark (mathematically prove the learned agent beats its Genesis self)
 - Toxic-version detection with a rollback recommendation card; bandit posterior restore on rollback
 
-*Hackathon build in progress — see `docs/PROGRESS.md` for live status.*
+*Built for AI Builders Day 2, where it placed 3rd — see `docs/PROGRESS.md` for build status.*
