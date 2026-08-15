@@ -4,7 +4,6 @@ import { useState } from "react";
 import type {
   ArmView,
   CalibrationSeries,
-  GroundTruthReveal,
   PlaybookView,
   PlaybookVersionView,
 } from "@/lib/db/queries";
@@ -12,6 +11,7 @@ import { PlaybookPanel } from "./playbook-panel";
 import { ArmGrid } from "./arm-grid";
 import { CalibrationCharts } from "./calibration-charts";
 import { RevealPanel } from "./reveal-panel";
+import type { GroundTruthReveal } from "@/lib/db/groundTruth";
 import { cn } from "@/lib/utils";
 
 type Tab = "playbook" | "bandits" | "calibration" | "reveal";
@@ -40,7 +40,7 @@ export function BrainView({
   history: PlaybookVersionView[];
   arms: ArmView[];
   calibration: CalibrationSeries;
-  reveal: GroundTruthReveal;
+  reveal: GroundTruthReveal | null;
 }) {
   const [tab, setTab] = useState<Tab>("playbook");
 

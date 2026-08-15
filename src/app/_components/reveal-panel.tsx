@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import type { GroundTruthReveal } from "@/lib/db/queries";
+import type { GroundTruthReveal } from "@/lib/db/groundTruth";
+import type { Archetype } from "@/lib/types";
+import { ARCHETYPES } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -11,48 +13,63 @@ const SOURCE_LABEL: Record<string, string> = {
   edit: "distilled from your edit",
 };
 
-function Bar({ value, tone }: { value: number; tone: "world" | "agent" }) {
+/** Affinity 0..1 as ink density — the hidden matrix read at a glance. */
+function AffinityCell({ value, isBest }: { value: number; isBest: boolean }) {
   return (
-    <div className="h-1.5 w-full overflow-hidden rounded-full bg-foreground/8">
+    <td className="px-2 py-1.5">
       <div
-        className={cn("h-full rounded-full", tone === "world" ? "bg-foreground/55" : "bg-signal")}
-        style={{ width: `${Math.max(2, Math.round(value * 100))}%` }}
-      />
+        className={cn(
+          "flex h-9 items-center justify-center rounded-lg font-mono text-[0.72rem] tabular-nums",
+          isBest && "ring-2 ring-signal",
+        )}
+        style={{
+          backgroundColor: `color-mix(in oklch, var(--foreground) ${Math.round(value * 88)}%, var(--card))`,
+          color: value > 0.55 ? "var(--card)" : "var(--foreground)",
+        }}
+      >
+        {value.toFixed(2)}
+      </div>
+    </td>
+  );
+}
+
+function Bars({
+  items,
+  muted,
+}: {
+  items: { key: string; score: number; observations?: number }[];
+  muted?: boolean;
+}) {
+  return (
+    <div className="space-y-2">
+      {items.map((item) => (
+        <div key={item.key} className="flex items-center gap-3">
+          <span className="w-24 shrink-0 text-[0.78rem] capitalize">{item.key}</span>
+          <span className="h-2.5 flex-1 overflow-hidden rounded-full bg-muted">
+            <span
+              className={cn("block h-full rounded-full", muted ? "bg-muted-foreground/50" : "bg-foreground")}
+              style={{ width: `${Math.max(item.score * 100, 2)}%` }}
+            />
+          </span>
+          {item.observations !== undefined && (
+            <span className="w-10 shrink-0 text-right font-mono text-[0.62rem] text-muted-foreground tabular-nums">
+              n={item.observations}
+            </span>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
 
-function agreementCopy(reveal: GroundTruthReveal): { title: string; body: string } {
-  const truth = `${reveal.trueBest.archetype}/${reveal.trueBest.timeSlot}`;
-  if (!reveal.champion) {
-    return {
-      title: "Not enough evidence yet",
-      body: `No arm has observed outcomes, so there is no champion to grade. The world's true best arm is ${truth} — advance a few sim days and come back.`,
-    };
-  }
-  const champ = `${reveal.champion.archetype}/${reveal.champion.timeSlot}`;
-  switch (reveal.agreement) {
-    case "match":
-      return {
-        title: "The agent found it",
-        body: `Champion arm ${champ} (n=${reveal.champion.observations}) is exactly the world's hidden best arm — discovered from outcomes alone.`,
-      };
-    case "partial":
-      return {
-        title: "One axis off",
-        body: `Champion ${champ} (n=${reveal.champion.observations}) vs true best ${truth} — the agent has locked one dimension and is still exploring the other.`,
-      };
-    default:
-      return {
-        title: "Still searching",
-        body: `Champion ${champ} (n=${reveal.champion.observations}) diverges from the true best ${truth} — more observations will pull the posteriors toward the truth.`,
-      };
-  }
-}
-
-export function RevealPanel({ reveal }: { reveal: GroundTruthReveal }) {
+export function RevealPanel({ reveal }: { reveal: GroundTruthReveal | null }) {
+  // Spoiler-gated so the answer key cannot leak on screen during earlier demo
+  // scenes; state resets on navigation, which is what a rehearsal wants.
   const [revealed, setRevealed] = useState(false);
-  const archetypes = [...new Set(reveal.arms.map((a) => a.archetype))];
+
+  if (!reveal) {
+    return <p className="px-6 py-10 text-[0.9rem] text-muted-foreground md:px-10">No world loaded.</p>;
+  }
 
   if (!revealed) {
     return (
@@ -63,8 +80,8 @@ export function RevealPanel({ reveal }: { reveal: GroundTruthReveal }) {
         </h3>
         <p className="mx-auto mt-3 max-w-lg text-[0.9rem] leading-relaxed text-muted-foreground">
           Per-segment content affinities, the audience&apos;s real active hours, and the platform
-          algorithm&apos;s levers. The agent only ever saw outcomes. Reveal the ground truth and
-          compare it with what the playbook and bandits learned.
+          algorithm&apos;s levers. The strategist only ever saw playbook rules, bandit posteriors and
+          observed outcomes. Reveal the ground truth and compare it with what the agent learned.
         </p>
         <button
           type="button"
@@ -77,158 +94,123 @@ export function RevealPanel({ reveal }: { reveal: GroundTruthReveal }) {
     );
   }
 
-  const verdict = agreementCopy(reveal);
+  const segments = Object.keys(reveal.affinity);
 
   return (
     <div>
-      {/* verdict */}
       <div className="border-b px-6 py-6 md:px-10">
-        <p className={cn("eyebrow", reveal.agreement === "match" ? "text-positive" : "text-signal")}>
-          {reveal.agreement === "untested" ? "ungraded" : reveal.agreement}
-        </p>
-        <h3 className="display-sm mt-1.5 text-[1.5rem]">{verdict.title}</h3>
-        <p className="mt-2 max-w-2xl text-[0.88rem] leading-relaxed text-muted-foreground">
-          {verdict.body}
+        <p className="eyebrow">The reveal</p>
+        <h3 className="display-sm mt-2 max-w-2xl text-[1.6rem]">
+          The world was built with a hidden config. The agent never saw it.
+        </h3>
+        <p className="mt-3 max-w-2xl text-[0.88rem] leading-relaxed text-muted-foreground">
+          The strategist only ever receives playbook rules, bandit posteriors and observed
+          signals — never the affinity matrix or any persona&apos;s internals. So this comparison
+          measures learning against ground truth rather than letting the agent grade itself.
         </p>
       </div>
 
-      {/* truth vs learned, arm by arm */}
-      <div className="border-b px-6 py-3 md:px-10">
-        <h3 className="eyebrow">Hidden truth vs learned posterior — compare rankings, not magnitudes</h3>
-      </div>
-      {archetypes.map((archetype) => (
-        <section key={archetype} className="border-b">
-          <div className="border-b bg-muted/40 px-6 py-1.5 md:px-10">
-            <h4 className="eyebrow">{archetype}</h4>
-          </div>
-          <div className="grid sm:grid-cols-3 [&>*]:-mr-px [&>*]:border-r">
-            {reveal.arms
-              .filter((a) => a.archetype === archetype)
-              .map((arm) => (
-                <div key={`${arm.archetype}-${arm.timeSlot}`} className="px-6 py-4 md:px-10">
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-[0.82rem]">{arm.timeSlot}</span>
-                    <span className="flex gap-2">
-                      {arm.isTrueBest && <span className="eyebrow text-positive">true best</span>}
-                      {arm.isChampion && <span className="eyebrow text-signal">champion</span>}
-                    </span>
-                  </div>
-                  <div className="mt-3 space-y-2">
-                    <div className="flex items-center gap-2.5">
-                      <span className="w-10 shrink-0 font-mono text-[0.6rem] text-muted-foreground">
-                        world
-                      </span>
-                      <Bar value={arm.trueScore} tone="world" />
-                      <span className="w-9 shrink-0 text-right font-mono text-[0.62rem] tabular-nums">
-                        {arm.trueScore.toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2.5">
-                      <span className="w-10 shrink-0 font-mono text-[0.6rem] text-muted-foreground">
-                        agent
-                      </span>
-                      <Bar value={arm.observations > 0 ? arm.learnedMean : 0} tone="agent" />
-                      <span className="w-9 shrink-0 text-right font-mono text-[0.62rem] tabular-nums">
-                        {arm.observations > 0 ? arm.learnedMean.toFixed(2) : "—"}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="mt-2 font-mono text-[0.6rem] text-muted-foreground tabular-nums">
-                    n={arm.observations}
-                  </div>
-                </div>
-              ))}
-          </div>
-        </section>
-      ))}
+      {/* verdicts first — this is the line the demo lands on */}
+      <div className="grid border-b sm:grid-cols-2 [&>*]:-mr-px [&>*]:border-r">
+        {reveal.dimensions.map((d) => (
+          <div key={d.label} className="px-6 py-6 md:px-10">
+            <p className="eyebrow">{d.label}</p>
 
-      <div className="grid lg:grid-cols-2">
-        {/* segment affinity matrix */}
-        <section className="lg:border-r">
-          <div className="border-b px-6 py-3 md:px-10">
-            <h3 className="eyebrow">Hidden affinity matrix — segment × archetype</h3>
+            {d.evidence === 0 ? (
+              <>
+                <p className="figure mt-3 text-[1.6rem] text-muted-foreground">No evidence yet</p>
+                <p className="mt-2 text-[0.8rem] text-muted-foreground">
+                  Every arm still sits on its prior — advance the clock so outcomes land before
+                  reading this.
+                </p>
+              </>
+            ) : (
+              <>
+                <p
+                  className={cn(
+                    "figure mt-3 text-[1.9rem] capitalize",
+                    d.agrees ? "text-positive" : "text-caution",
+                  )}
+                >
+                  {d.agrees ? "Match" : "Not yet"}
+                </p>
+                <p className="mt-2 text-[0.85rem] leading-relaxed text-muted-foreground">
+                  Truth favours <span className="font-bold text-foreground capitalize">{d.truthTop}</span>
+                  ; the agent ranks{" "}
+                  <span className="font-bold text-foreground capitalize">{d.learnedTop}</span> highest
+                  after {d.evidence} scored post{d.evidence === 1 ? "" : "s"}.
+                </p>
+              </>
+            )}
+
+            <div className="mt-6 space-y-5">
+              <div>
+                <p className="eyebrow mb-2">Hidden truth</p>
+                <Bars items={d.truth} />
+              </div>
+              <div>
+                <p className="eyebrow mb-2">What the agent believes</p>
+                <Bars items={d.learned} muted />
+              </div>
+            </div>
           </div>
-          <div className="px-6 py-4 md:px-10">
-            {reveal.segments.map((seg) => (
-              <div key={seg.name} className="border-b py-3 last:border-b-0">
-                <div className="flex items-baseline justify-between">
-                  <span className="text-[0.85rem] font-semibold">{seg.name}</span>
-                  <span className="font-mono text-[0.62rem] text-muted-foreground tabular-nums">
-                    {seg.personaCount} personas
-                  </span>
-                </div>
-                <div className="mt-2 grid grid-cols-4 gap-3">
-                  {(Object.keys(seg.affinity) as (keyof typeof seg.affinity)[]).map((arch) => (
-                    <div key={arch}>
-                      <div className="flex items-baseline justify-between">
-                        <span className="font-mono text-[0.58rem] text-muted-foreground">
-                          {arch}
-                        </span>
-                        <span className="font-mono text-[0.62rem] tabular-nums">
-                          {seg.affinity[arch].toFixed(1)}
-                        </span>
-                      </div>
-                      <div className="mt-1">
-                        <Bar value={seg.affinity[arch]} tone="world" />
-                      </div>
-                    </div>
+        ))}
+      </div>
+
+      {/* the raw matrix — proof there is a real hidden structure, not a vibe */}
+      <div className="border-b px-6 py-6 md:px-10">
+        <p className="eyebrow">Hidden affinity matrix</p>
+        <p className="mt-2 mb-4 max-w-2xl text-[0.85rem] text-muted-foreground">
+          How much each audience segment actually likes each content archetype, straight from
+          <span className="font-mono text-[0.78rem]"> worlds.config</span>. Ringed cell = that
+          segment&apos;s true favourite.
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[34rem]">
+            <thead>
+              <tr>
+                <th className="eyebrow px-2 py-2 text-left font-normal">Segment</th>
+                {ARCHETYPES.map((a) => (
+                  <th key={a} className="eyebrow px-2 py-2 text-center font-normal">
+                    {a}
+                  </th>
+                ))}
+                <th className="eyebrow px-2 py-2 text-right font-normal">Size</th>
+              </tr>
+            </thead>
+            <tbody>
+              {segments.map((segment) => (
+                <tr key={segment}>
+                  <td className="px-2 py-1.5 text-[0.8rem]">{segment}</td>
+                  {ARCHETYPES.map((a) => (
+                    <AffinityCell
+                      key={a}
+                      value={reveal.affinity[segment]?.[a as Archetype] ?? 0}
+                      isBest={reveal.segmentBest[segment] === a}
+                    />
                   ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
+                  <td className="px-2 py-1.5 text-right font-mono text-[0.72rem] text-muted-foreground tabular-nums">
+                    {reveal.segmentSizes[segment] ?? 0}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
-        {/* audience rhythm + algorithm levers */}
-        <section>
-          <div className="border-b px-6 py-3 md:px-10">
-            <h3 className="eyebrow">When the audience is really online</h3>
+        <div className="mt-6 border-t pt-4">
+          <p className="eyebrow">Hidden algorithm</p>
+          <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 font-mono text-[0.72rem] text-muted-foreground">
+            <span>early-velocity boost ×{reveal.algo?.earlyVelocityBoost}</span>
+            <span>over-post penalty ×{reveal.algo?.overPostPenalty}</span>
+            <span>free reach up to {reveal.algo?.maxOrganicReachPostsPerDay} posts/day</span>
+            <span>discovery rate {reveal.algo?.discoveryRate}</span>
           </div>
-          <div className="space-y-2.5 px-6 py-4 md:px-10">
-            {reveal.slotActivity.map(({ slot, share }) => (
-              <div key={slot} className="flex items-center gap-2.5">
-                <span className="w-16 shrink-0 text-[0.8rem]">{slot}</span>
-                <Bar value={share} tone="world" />
-                <span className="w-10 shrink-0 text-right font-mono text-[0.62rem] tabular-nums">
-                  {Math.round(share * 100)}%
-                </span>
-              </div>
-            ))}
-          </div>
-          <div className="border-y px-6 py-3 md:px-10">
-            <h3 className="eyebrow">Platform algorithm levers</h3>
-          </div>
-          <div className="grid grid-cols-3 [&>*]:-mr-px [&>*]:border-r">
-            <div className="px-6 py-4 md:px-10">
-              <span className="figure block text-[1.5rem]">
-                {reveal.algo.earlyVelocityBoost.toFixed(1)}×
-              </span>
-              <span className="mt-1 block text-[0.7rem] text-muted-foreground">
-                early-velocity boost
-              </span>
-            </div>
-            <div className="px-6 py-4 md:px-10">
-              <span className="figure block text-[1.5rem]">
-                {reveal.algo.overPostPenalty.toFixed(1)}×
-              </span>
-              <span className="mt-1 block text-[0.7rem] text-muted-foreground">
-                over-posting penalty
-              </span>
-            </div>
-            <div className="px-6 py-4 md:px-10">
-              <span className="figure block text-[1.5rem]">
-                {reveal.algo.maxOrganicReachPostsPerDay}
-              </span>
-              <span className="mt-1 block text-[0.7rem] text-muted-foreground">
-                full-reach posts / day
-              </span>
-            </div>
-          </div>
-        </section>
+        </div>
       </div>
 
-      {/* what the agent wrote down */}
-      <div className="border-t">
+      {/* what the agent wrote down — read next to the matrix above */}
+      <div>
         <div className="border-b px-6 py-3 md:px-10">
           <h3 className="eyebrow">What the agent wrote down — content + timing rules</h3>
         </div>
@@ -239,7 +221,7 @@ export function RevealPanel({ reveal }: { reveal: GroundTruthReveal }) {
         ) : (
           reveal.learnedRules.map((rule) => (
             <div
-              key={rule.id}
+              key={rule.ruleKey}
               className="flex items-baseline gap-4 border-b px-6 py-3 last:border-b-0 md:px-10"
             >
               <span className="w-24 shrink-0 font-mono text-[0.65rem] text-signal">
@@ -247,7 +229,7 @@ export function RevealPanel({ reveal }: { reveal: GroundTruthReveal }) {
               </span>
               <span className="flex-1 text-[0.85rem] leading-relaxed">{rule.text}</span>
               <span className="hidden shrink-0 font-mono text-[0.6rem] text-muted-foreground sm:inline">
-                {SOURCE_LABEL[rule.evidence.sourceType] ?? rule.evidence.sourceType}
+                {SOURCE_LABEL[rule.sourceType] ?? rule.sourceType}
               </span>
             </div>
           ))

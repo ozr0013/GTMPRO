@@ -71,9 +71,12 @@ export function modelFor(role: AgentRole) {
     const local = createOpenAICompatible({
       name: "ollama",
       baseURL: process.env.LOCAL_BASE_URL ?? "http://localhost:11434/v1",
-      // Ollama supports schema-constrained decoding via response_format;
-      // without this flag generateObject falls back to prompt-based JSON
-      // and small local models fail schema validation.
+      // Ollama supports schema-constrained decoding via response_format. Without
+      // this flag the provider silently drops the JSON schema ("responseFormat is
+      // not supported") and generateObject falls back to prompt-based JSON, which
+      // small local models fail — every structured call dies, genesis first.
+      // Note: `npm run smoke` cannot catch this, since generateText carries no
+      // schema. Validate local mode with scripts/e2e-drive.ts.
       supportsStructuredOutputs: true,
     });
     return local(localModelNameFor(role));
@@ -155,10 +158,16 @@ function mockFor(role: AgentRole, opts: { worldSeed: string; refId: string }, us
   const timeSlot = pick(rng, ["morning", "midday", "evening"] as const);
   switch (role) {
     case "strategist": {
-      // Cite the newest playbook rules (last in the context list) so a rule the
-      // coach just learned shows up in the very next proposal's evidence.
+      // Two citation needs, both real (merged from parallel fixes):
+      //  - the NEWEST rule (last in the context list) must be cited so a rule the
+      //    coach just learned shows up in the very next proposal's evidence — the
+      //    demo's closure beat, regression-tested in tests/loop.test.ts;
+      //  - citations must land on rules that exist in THIS world and spread across
+      //    the playbook, or rule→outcome attribution reads "never cited" forever.
       const known = contextRuleKeys(user);
-      const cited = known.length > 0 ? known.slice(-2).reverse() : ["timing-1"];
+      const newest = known[known.length - 1];
+      const spread = known.length > 1 ? pick(rng, known.slice(0, -1)) : undefined;
+      const cited = newest ? (spread ? [newest, spread] : [newest]) : ["timing-1"];
       return StrategistOutput.parse({
         actions: [
           {
@@ -199,14 +208,17 @@ function mockFor(role: AgentRole, opts: { worldSeed: string; refId: string }, us
         suggestedLessons: [{ category: "timing", text: "Morning education posts outperform.", confidence: 0.7 }],
       });
     case "coach": {
-      // The coach digest arrives as JSON (see coachRunner). Read it like the
-      // live coach would: each kind of evidence becomes a targeted rule, and a
-      // typed rejection reason is echoed into the rule so the human can see
-      // their own words become policy.
+      // The coach digest arrives as JSON (see coachRunner). Read it the way the
+      // live coach would — merged behavior from two parallel fixes:
+      //  - outstanding rejections MUST become rules, echoing the human's own words
+      //    (with the proposalId in evidenceRefs so addressed-ness tracking sees it);
+      //  - outcome cycles draw DISTINCT rotating lessons, because the dedupe guard
+      //    now drops restated rules and a single canned lesson would freeze the
+      //    playbook after v2.
       type Digest = {
         outcomeReports?: { verdict?: string }[];
-        rejections?: { proposalId: string; reason: string }[];
-        edits?: { proposalId: string }[];
+        humanRejections_MUST_ADDRESS?: { proposalId: string; humanSaid: string }[];
+        humanEdits?: { proposalId: string }[];
       };
       let digest: Digest | null = null;
       try {
@@ -221,39 +233,45 @@ function mockFor(role: AgentRole, opts: { worldSeed: string; refId: string }, us
         sourceType: "outcome" | "rejection" | "edit";
       };
       const add: Add[] = [];
-      if (digest?.edits?.length) {
+      if (digest?.humanEdits?.length) {
         add.push({
           category: "voice",
           text: "Keep hashtag count low; do not lead with hashtag dumps.",
-          evidenceRefs: digest.edits.map((e) => e.proposalId),
+          evidenceRefs: digest.humanEdits.map((e) => e.proposalId),
           sourceType: "edit",
         });
       }
-      if (digest?.rejections?.length) {
-        // Echo each distinct typed reason (capped) — a digest can carry several
-        // rejections and every one of them is human training signal.
+      if (digest?.humanRejections_MUST_ADDRESS?.length) {
+        // Echo each distinct typed reason (capped) — every rejection is human
+        // training signal, and citing its proposalId marks it addressed.
         const seen = new Set<string>();
-        for (const rejection of digest.rejections) {
-          const reason = rejection.reason?.trim() || "rejected without a stated reason";
+        for (const rejection of digest.humanRejections_MUST_ADDRESS) {
+          const reason = rejection.humanSaid?.trim() || "rejected without a stated reason";
           if (seen.has(reason)) continue;
           seen.add(reason);
           if (seen.size > 3) break;
           add.push({
             category: "content",
             text: `Human rejection: "${reason.slice(0, 90)}" — do not propose this pattern again.`,
-            evidenceRefs: digest.rejections
-              .filter((r) => (r.reason?.trim() || "rejected without a stated reason") === reason)
+            evidenceRefs: digest.humanRejections_MUST_ADDRESS
+              .filter((r) => (r.humanSaid?.trim() || "rejected without a stated reason") === reason)
               .map((r) => r.proposalId),
             sourceType: "rejection",
           });
         }
       }
       if (digest?.outcomeReports?.length) {
-        const total = digest.outcomeReports.length;
-        const beat = digest.outcomeReports.filter((r) => r.verdict === "exceeded").length;
+        // Distinct lessons per cycle so consecutive digests never restate a rule.
+        const lessons = [
+          { category: "timing", text: "Prefer morning slots for education posts; engagement peaks 7-9am." },
+          { category: "content", text: "Open with a concrete number; vague claims underperform." },
+          { category: "audience", text: "Cafe owners respond to product posts, not memes." },
+          { category: "voice", text: "One question per caption; stacked questions reduce replies." },
+        ] as const;
+        const lesson = pick(rng, lessons);
         add.push({
-          category: "timing",
-          text: `Outcome digest ${opts.refId}: ${beat}/${total} posts beat predictions — keep education posts in the morning slot.`,
+          category: lesson.category,
+          text: lesson.text,
           evidenceRefs: [opts.refId],
           sourceType: "outcome",
         });

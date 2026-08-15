@@ -176,8 +176,16 @@ export const activityLog = sqliteTable("activity_log", {
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });
 
+// NOTE: secrets never live here. This DB is a committed artifact
+// (demo-snapshot.db), so the Slack bot token / webhook URL stay in env and only
+// the routing target and preferences are stored.
 export const settings = sqliteTable("settings", {
   worldId: text("world_id").primaryKey(),
+  /** @handle, email, or Uxxxx — who approvals get routed to */
+  slackTarget: text("slack_target"),
+  /** which notification kinds are on, JSON string[] */
+  slackNotify: text("slack_notify", { mode: "json" }),
+  slackEnabled: integer("slack_enabled", { mode: "boolean" }).notNull().default(false),
   mode: text("mode").notNull().default("propose"), // propose | autopilot
   maxPostsPerDay: integer("max_posts_per_day").notNull().default(3),
   maxDmsPerDay: integer("max_dms_per_day").notNull().default(5),

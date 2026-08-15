@@ -101,9 +101,10 @@ export async function generateHeroImage(postId: string): Promise<HeroImageResult
   let bytes: Uint8Array;
 
   try {
+    // Mock mode has no network at all; local mode has an Ollama text server but no
+    // image model. Both take the seeded local render, so the hero button works
+    // keyless in every mode.
     if ((process.env.MODEL_MODE ?? "mock") === "mock" || isLocalProvider()) {
-      // Local live mode has no image model (Ollama is text-only here), so it
-      // shares the seeded-SVG path — the hero button works in every mode.
       filename = `${postId}.svg`;
       bytes = new TextEncoder().encode(
         // keyed on the post's stable stream key, not its UUID, so the same seeded

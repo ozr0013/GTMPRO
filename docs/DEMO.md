@@ -1,6 +1,23 @@
 # Demo Script (3-5 minutes)
 
-Target runtime 4:50. Rehearse twice from a fresh seed before recording (Task F2). The script assumes Tracks A/B/C have landed; per-scene fallbacks are noted where a piece may not be built yet. Platform is always called Pictogram on screen and out loud.
+**Presented live, in person.** No second take — rehearse until it fits.
+
+## Run it
+
+```bash
+npm run demo      # resets demo-run.db from the snapshot, starts in mock mode
+```
+
+That is the only command you need. It works from a clean checkout with **no API keys**,
+resets state every time so each rehearsal starts identically, and never touches the
+committed `demo-snapshot.db`. Do not run the demo against local models — a single sim-day
+advance takes minutes.
+
+Target runtime 4:50, which is over the 5:00 ceiling if anything runs long — the two scenes
+to protect are **2:45 (the learning moment)** and **4:00 (the reveal)**. If you are losing
+time, cut 0:00 genesis and open on the pre-built world instead.
+
+Platform is always called Pictogram on screen and out loud.
 
 ## 0:00 — Genesis onboarding
 
@@ -41,9 +58,10 @@ Target runtime 4:50. Rehearse twice from a fresh seed before recording (Task F2)
 
 ## 4:00 — The reveal
 
-- Click: `/brain` > **Reveal** tab. Read the setup line out loud, then hit "Reveal the hidden config". Point at: the verdict banner (champion vs true best), the per-arm world/agent bars, the affinity matrix, the real active-hours split, and "what the agent wrote down" underneath.
+- Click: `/brain` > **Reveal** tab. Read the setup line out loud, then hit **"Reveal the hidden config"** (spoiler-gated so it cannot leak earlier). Per-dimension verdicts land first — e.g. Content archetype reads **Match** while Time slot reads **Not Yet** with its observation count. Scroll: the hidden affinity matrix (each segment's true favourite ringed), the algorithm levers, and "what the agent wrote down" underneath.
+- Do not hide a "Not Yet". Getting one dimension right and saying so with observation counts is what makes the Match believable rather than staged.
 - Say: "The world had a hidden config — per-segment content affinities, real active hours, algorithm levers. The agent never saw any of it; it only saw outcomes. Here's the answer key against what it learned."
-- Judge notices: learning is measured against ground truth, not self-graded by the same LLM — and the match (or the honest "still searching") is visible arm by arm.
+- Judge notices: learning is measured against ground truth, not self-graded by the same LLM — and the match (or the honest miss) is visible per dimension.
 
 ## 4:30 — Trust tour
 
@@ -51,22 +69,31 @@ Target runtime 4:50. Rehearse twice from a fresh seed before recording (Task F2)
 - Say: "Autonomy is a dial, not a leap of faith: hard caps in one gate function, a full activity trail, a kill switch, and a revertible brain."
 - Judge notices: trust primitives are enforced in code (`checkGuardrails`, versioned playbook), not promised in the UI.
 
-## Live-local runbook (Ollama — the primary demo mode)
+## The snapshot everything runs against
 
-`.env.local` is already `MODEL_MODE=live` + `MODEL_PROVIDER=local` (Qwen3 acts, Gemma 3 judges). Latency reality on an M1 Max (32 GB tier): **genesis ≈ 4–5 min, one heartbeat ≈ 1–2 min, one full sim day ≈ 10–15 min** (persona + community calls every tick). Choreograph around that:
+`npx tsx scripts/build-demo.ts` rebuilds the committed `demo-snapshot.db` — 20 sim days,
+seeded so every beat above is **already in the data** and nothing has to be generated on
+camera. It prints a checklist; all of these must read YES before demo day:
 
-1. **30+ min before the demo:** `OLLAMA_KEEP_ALIVE=45m ollama serve` in its own terminal, then `npm run smoke` — expect three PASS lines. Keep that terminal open; if models unload mid-demo the next call stalls ~30 s reloading.
-2. **Pre-bake the world:** run genesis (onboarding) and 2-3 sim days *before* judges arrive, ending the fast-forward just after a day boundary so the playbook has fresh coach versions. Scene 0:00 then *replays* onboarding on a second world if asked, or talks over the pre-baked one.
-3. **Run live on stage:** heartbeat (scene 0:45) and approvals are the live beats — a heartbeat's 1-2 min is talk-over time for the proposal-anatomy narration. Do NOT advance a full day live; use the pre-baked state for scenes 2:15+.
-4. **If anything stalls:** flip to the offline fallback below — same UI, instant.
-
-## Offline fallback
-
-Demo day needs no network: `scripts/prewarm-demo.ts` (Task C5) runs the demo path ahead of time and caches the result as a committed `demo-snapshot.db`. If Ollama or the machine misbehaves, stop the dev server and restart with
-
-```bash
-cp demo-snapshot.db demo-live.db   # replay on a copy — never mutate the committed snapshot
-MODEL_MODE=mock DB_PATH=./demo-live.db npm run dev
+```
+rejection -> rule : YES   (a rule sourced from the typed rejection)
+pending proposal  : YES   (so /approvals is not empty on screen)
+meeting booked    : YES   (the funnel reaches the money metric)
+reveal Content archetype: MATCH
+rules with measured track record: 4/4
 ```
 
-and replay from the 2:15 mark — every scene above still works because the loop runs fully offline (mock agents now read their context: proposals cite the newest playbook rules and typed rejections still become visible rules).
+`npm run demo` starts from a fresh copy (`demo-run.db`) every time, so a stray click during
+rehearsal cannot dirty the original.
+
+## Live-local flex (Ollama — optional beats on top of the snapshot)
+
+The whole system runs keyless on local models (`MODEL_MODE=live` + `MODEL_PROVIDER=local`;
+Qwen3 acts, Gemma 3 judges). Latency reality on an M1 Max 32 GB: **genesis ≈ 4–5 min, one
+heartbeat ≈ 1–2 min, one full sim day ≈ 6–12 min** — so the live beats are heartbeat +
+approvals only, never a day advance:
+
+1. **30+ min before the demo:** `OLLAMA_KEEP_ALIVE=45m ollama serve` in its own terminal, then `npm run smoke` — expect three PASS lines. Keep that terminal open; if models unload mid-demo the next call stalls ~30 s reloading.
+2. **Pre-bake the live world:** genesis + 2-3 sim days *before* judges arrive, ending just after a day boundary so the playbook has fresh coach versions.
+3. **On stage:** run one live heartbeat (scene 0:45) — its 1-2 min is talk-over time for the proposal-anatomy narration. Everything else plays from pre-baked state.
+4. **If anything stalls:** `npm run demo` — same UI, mock mode, instant, from the checklist-verified snapshot.

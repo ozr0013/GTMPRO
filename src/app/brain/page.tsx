@@ -4,9 +4,9 @@ import {
   getActivePlaybook,
   getArmDistributions,
   getCalibrationSeries,
-  getGroundTruthReveal,
   getPlaybookHistory,
 } from "@/lib/db/queries";
+import { getGroundTruthReveal } from "@/lib/db/groundTruth";
 import { BrainView } from "../_components/brain-view";
 
 export const dynamic = "force-dynamic";

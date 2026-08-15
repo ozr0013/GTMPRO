@@ -50,3 +50,7 @@ demo-live.db*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+e2e-local.log
+advance.log
+demo-run.db
+demo-run.db-*
