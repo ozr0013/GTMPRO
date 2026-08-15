@@ -80,7 +80,7 @@ export function SlackSettings({ worldId, enabled, target, kinds, readiness }: Sl
       <div
         className={cn(
           "mt-6 rounded-2xl px-4 py-3 text-[0.82rem]",
-          readiness.deliverable ? "bg-muted" : "bg-caution/10",
+          readiness.deliverable ? "bg-muted" : "border border-dashed border-foreground/40 bg-muted/40",
         )}
       >
         {readiness.deliverable ? (
@@ -169,7 +169,7 @@ export function SlackSettings({ worldId, enabled, target, kinds, readiness }: Sl
           <span
             className={cn(
               "text-[0.82rem]",
-              testResult.sent ? "text-positive" : "text-destructive",
+              testResult.sent ? "text-muted-foreground" : "font-bold text-foreground",
             )}
           >
             {testResult.sent ? "Sent — check your phone." : `Failed: ${testResult.reason}`}

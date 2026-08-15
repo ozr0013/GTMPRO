@@ -28,19 +28,36 @@ for (const suffix of ["", "-wal", "-shm"]) rmSync(`${RUNTIME}${suffix}`, { force
 copyFileSync(SNAPSHOT, RUNTIME);
 
 console.log("demo-run.db reset from demo-snapshot.db");
-console.log("mock mode · http://localhost:3000 · Ctrl+C to stop\n");
 
-const child = spawn("npm", ["run", "dev"], {
-  stdio: "inherit",
-  shell: true,
-  env: {
-    ...process.env,
-    DB_PATH: "./demo-run.db",
-    MODEL_MODE: "mock",
-    // force cloud/mock even if .env.local is configured for Ollama — a live demo
-    // must never wait on a local model
-    MODEL_PROVIDER: "cloud",
-  },
+// async main because tsx compiles this file as CJS, where top-level await fails
+async function main(): Promise<void> {
+  // public/generated is gitignored, so a clean checkout is missing the hero files
+  // the snapshot references. Mock heroes are seeded, so they restore byte-identical.
+  // DB_PATH must be set before the import — the db client opens it at module load.
+  process.env.DB_PATH = RUNTIME;
+  const { restoreMissingHeroFiles } = await import("../src/lib/agents/artdirector");
+  const { restored } = restoreMissingHeroFiles();
+  if (restored > 0) console.log(`restored ${restored} missing hero image(s) from their seeds`);
+
+  console.log("mock mode · http://localhost:3000 · Ctrl+C to stop\n");
+
+  const child = spawn("npm", ["run", "dev"], {
+    stdio: "inherit",
+    shell: true,
+    env: {
+      ...process.env,
+      DB_PATH: "./demo-run.db",
+      MODEL_MODE: "mock",
+      // force cloud/mock even if .env.local is configured for Ollama — a live demo
+      // must never wait on a local model
+      MODEL_PROVIDER: "cloud",
+    },
+  });
+
+  child.on("exit", (code) => process.exit(code ?? 0));
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
 });
-
-child.on("exit", (code) => process.exit(code ?? 0));

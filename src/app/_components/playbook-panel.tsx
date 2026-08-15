@@ -55,19 +55,21 @@ export function PlaybookPanel({
               .map((rule) => (
                 <details key={rule.id} className="group border-b">
                   <summary className="flex cursor-pointer list-none items-baseline gap-4 px-6 py-3 hover:bg-muted/40 md:px-10">
-                    <span className="w-24 shrink-0 font-mono text-[0.65rem] text-signal">
+                    <span className="w-24 shrink-0 font-mono text-[0.65rem] font-medium">
                       {rule.ruleKey}
                     </span>
                     <span className="flex-1 text-[0.88rem] leading-relaxed">{rule.text}</span>
                     {/* measured track record — the number only moves once scored
                         posts have cited this rule */}
                     {rule.track ? (
+                      // monochrome grades: earning = inverted ink chip,
+                      // failing = outlined chip, unproven = muted chip
                       <span
                         className={`shrink-0 rounded-full px-2 py-0.5 font-mono text-[0.62rem] tabular-nums ${
                           rule.track.meanReward >= 0.6
-                            ? "bg-positive/12 text-positive"
+                            ? "bg-foreground text-background"
                             : rule.track.meanReward < 0.4
-                              ? "bg-destructive/10 text-destructive"
+                              ? "border border-foreground/50 text-foreground"
                               : "bg-muted text-muted-foreground"
                         }`}
                         title={`${rule.track.citations} scored post(s) cited this rule · ${rule.track.exceeded} exceeded / ${rule.track.missed} missed`}
@@ -107,7 +109,9 @@ export function PlaybookPanel({
             <div className="flex items-baseline gap-2.5">
               <span
                 className={`figure text-[1.35rem] ${
-                  version.version === playbook.version ? "text-signal" : ""
+                  version.version === playbook.version
+                    ? "underline decoration-2 underline-offset-4"
+                    : "text-muted-foreground"
                 }`}
               >
                 v{version.version}
@@ -119,22 +123,24 @@ export function PlaybookPanel({
             </div>
             <p className="mt-1.5 text-[0.8rem] text-muted-foreground">{version.changeSummary}</p>
 
+            {/* monochrome diff: added = solid ink rule + bold label, amended =
+                dashed half-ink rule, retired = faint rule + struck text */}
             <div className="mt-3 space-y-1.5">
               {version.added.map((rule) => (
                 <div
                   key={`add-${rule.ruleKey}`}
-                  className="border-l-2 border-positive pl-2.5 text-[0.75rem] leading-relaxed"
+                  className="border-l-2 border-foreground pl-2.5 text-[0.75rem] leading-relaxed"
                 >
-                  <span className="eyebrow text-positive">added</span>{" "}
+                  <span className="eyebrow font-bold text-foreground">+ added</span>{" "}
                   <span className="text-muted-foreground">{rule.text}</span>
                 </div>
               ))}
               {version.amended.map((rule) => (
                 <div
                   key={`amend-${rule.ruleKey}`}
-                  className="border-l-2 border-caution pl-2.5 text-[0.75rem] leading-relaxed"
+                  className="border-l-2 border-dashed border-foreground/50 pl-2.5 text-[0.75rem] leading-relaxed"
                 >
-                  <span className="eyebrow text-caution">amended</span>{" "}
+                  <span className="eyebrow text-foreground/70">~ amended</span>{" "}
                   <span className="text-muted-foreground line-through opacity-60">
                     {rule.before}
                   </span>{" "}
@@ -144,9 +150,9 @@ export function PlaybookPanel({
               {version.retired.map((rule) => (
                 <div
                   key={`retire-${rule.ruleKey}`}
-                  className="border-l-2 border-destructive pl-2.5 text-[0.75rem] leading-relaxed"
+                  className="border-l-2 border-foreground/25 pl-2.5 text-[0.75rem] leading-relaxed"
                 >
-                  <span className="eyebrow text-destructive">retired</span>{" "}
+                  <span className="eyebrow text-muted-foreground/70">− retired</span>{" "}
                   <span className="text-muted-foreground line-through opacity-60">{rule.text}</span>
                 </div>
               ))}
@@ -157,7 +163,7 @@ export function PlaybookPanel({
                 type="button"
                 disabled={pending}
                 onClick={() => rollback(version.version)}
-                className="eyebrow mt-3 border-b border-muted-foreground pb-0.5 transition-colors hover:border-signal hover:text-signal disabled:opacity-40"
+                className="eyebrow mt-3 border-b border-muted-foreground pb-0.5 transition-colors hover:border-foreground hover:text-foreground disabled:opacity-40"
               >
                 Roll back to v{version.version}
               </button>

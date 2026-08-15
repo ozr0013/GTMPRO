@@ -71,7 +71,7 @@ function FilterRow({
             className={cn(
               "border-b pb-0.5 font-mono text-[0.7rem] transition-colors",
               active === option
-                ? "border-signal text-signal"
+                ? "border-foreground font-bold text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >

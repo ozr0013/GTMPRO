@@ -9,13 +9,13 @@ import { CountUp } from "./count-up";
 import { cn } from "@/lib/utils";
 import { BookmarkIcon, HeartIcon, MessageCircleIcon } from "lucide-react";
 
-// Placeholder art is set in the palette's own ink, not stock gradient candy —
-// each archetype gets a duotone wash so the feed still reads as one publication.
+// Placeholder art in grades of ink — each archetype gets its own grey wash so
+// the feed still reads as one monochrome publication.
 const ARCHETYPE_WASH: Record<Archetype, string> = {
-  education: "from-[oklch(0.86_0.05_215)] to-[oklch(0.93_0.03_180)]",
-  story: "from-[oklch(0.87_0.06_25)] to-[oklch(0.93_0.03_60)]",
-  meme: "from-[oklch(0.89_0.08_75)] to-[oklch(0.94_0.04_45)]",
-  product: "from-[oklch(0.87_0.05_155)] to-[oklch(0.93_0.03_120)]",
+  education: "from-[oklch(0.93_0_0)] to-[oklch(0.97_0_0)]",
+  story: "from-[oklch(0.89_0_0)] to-[oklch(0.95_0_0)]",
+  meme: "from-[oklch(0.84_0_0)] to-[oklch(0.93_0_0)]",
+  product: "from-[oklch(0.91_0_0)] to-[oklch(0.96_0_0)]",
 };
 
 export function PhoneFeed({
@@ -79,8 +79,6 @@ function PostCard({
   imageBudgetRemaining: number;
 }) {
   const [showComments, setShowComments] = useState(false);
-  const [liked, setLiked] = useState(false);
-  const [burst, setBurst] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
   const [generating, startGenerating] = useTransition();
   const router = useRouter();
@@ -92,13 +90,6 @@ function PostCard({
       setImageError(result.ok ? null : (result.reason ?? "generation failed"));
       router.refresh();
     });
-
-  // double-tap is the platform-native gesture; a click on the art counts as one tap
-  const handleDoubleClick = () => {
-    setLiked(true);
-    setBurst(true);
-    window.setTimeout(() => setBurst(false), 650);
-  };
 
   // Ambient handles are stored with their "@" (sim/ambient.ts writes account.handle),
   // brand handles are a bare slug. Strip it so the single "@" below is not doubled
@@ -133,9 +124,8 @@ function PostCard({
       {/* the art director's hero once generated; until then the creative brief
           stands in for the image it describes */}
       <div
-        onDoubleClick={handleDoubleClick}
         className={cn(
-          "relative flex aspect-square cursor-pointer select-none items-center justify-center overflow-hidden border-y text-center",
+          "relative flex aspect-square items-center justify-center overflow-hidden border-y text-center",
           !post.imageUrl && `bg-gradient-to-br px-8 ${ARCHETYPE_WASH[post.archetype]}`,
         )}
       >
@@ -152,9 +142,6 @@ function PostCard({
             </p>
           </>
         )}
-        {burst && (
-          <HeartIcon className="pointer-events-none absolute size-24 animate-ping fill-white text-white/90" />
-        )}
       </div>
 
       {isBrand && !post.imageUrl && (
@@ -163,7 +150,7 @@ function PostCard({
             type="button"
             disabled={generating || imageBudgetRemaining <= 0}
             onClick={generate}
-            className="eyebrow border-b border-signal pb-px text-signal transition-opacity hover:opacity-60 disabled:pointer-events-none disabled:opacity-30"
+            className="eyebrow border-b border-foreground pb-px text-foreground transition-opacity hover:opacity-60 disabled:pointer-events-none disabled:opacity-30"
           >
             {generating ? "Generating…" : "Generate hero image"}
           </button>
@@ -173,17 +160,13 @@ function PostCard({
         </div>
       )}
 
+      {/* metrics are simulated audience outcomes; the operator is not a persona,
+          so nothing here fakes engagement — likes and saves read, comments toggle */}
       <div className="flex items-center gap-5 px-4 pt-3">
-        <button
-          type="button"
-          onClick={() => setLiked((v) => !v)}
-          className="flex items-center gap-1.5 font-mono text-[0.72rem] tabular-nums"
-          aria-pressed={liked}
-          aria-label="Like"
-        >
-          <HeartIcon className={cn("size-3.5", liked && "fill-signal text-signal")} />
-          <CountUp value={post.metrics.likes + (liked ? 1 : 0)} />
-        </button>
+        <span className="flex items-center gap-1.5 font-mono text-[0.72rem] text-muted-foreground tabular-nums">
+          <HeartIcon className="size-3.5" />
+          <CountUp value={post.metrics.likes} />
+        </span>
         <button
           type="button"
           onClick={() => setShowComments((v) => !v)}
@@ -206,7 +189,7 @@ function PostCard({
         <span className="font-medium">@{author}</span>{" "}
         <span className="text-muted-foreground">{post.caption}</span>
         {post.hashtags.length > 0 && (
-          <span className="mt-1.5 block font-mono text-[0.68rem] text-signal">
+          <span className="mt-1.5 block font-mono text-[0.68rem] text-muted-foreground">
             {post.hashtags.join(" ")}
           </span>
         )}

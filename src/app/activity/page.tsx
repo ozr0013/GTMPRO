@@ -4,10 +4,11 @@ import { getActivity } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
 
+// alarm states carry weight instead of hue — full ink and bold in a muted column
 const STATUS_COLOR: Record<string, string> = {
-  blocked: "text-destructive",
-  quarantined: "text-destructive",
-  failed: "text-destructive",
+  blocked: "font-bold text-foreground",
+  quarantined: "font-bold text-foreground",
+  failed: "font-bold text-foreground",
   expired: "text-muted-foreground",
   skipped: "text-muted-foreground",
 };

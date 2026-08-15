@@ -40,14 +40,14 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <div className="flex flex-1 flex-col">
           {/* full-width white nav bar sitting on the grey ground */}
           <header className="sticky top-0 z-30 bg-card">
-            <div className="flex items-center gap-6 px-5 py-3.5 md:px-8">
+            <div className="flex items-center gap-4 px-5 py-3.5 md:gap-6 md:px-8">
               <Link href="/" className="display shrink-0 text-[1.35rem] tracking-[-0.05em]">
                 flywheel
               </Link>
               <Nav pendingCount={world?.pendingCount ?? 0} />
               <Link
                 href="/onboarding"
-                className="ml-auto shrink-0 rounded-full bg-gradient-to-r from-signal/30 to-signal/10 px-4 py-2 text-[0.7rem] font-bold tracking-widest uppercase transition-opacity hover:opacity-70"
+                className="ml-auto shrink-0 rounded-full border border-border px-4 py-2 text-[0.7rem] font-bold tracking-widest uppercase transition-colors hover:border-foreground"
               >
                 New World
               </Link>

@@ -207,13 +207,49 @@ export async function generateHeroImage(postId: string): Promise<HeroImageResult
   return { ok: true, imageUrl, provider: usedProvider, providerError };
 }
 
+/**
+ * public/generated is gitignored, so a clean checkout has the snapshot's
+ * imageUrl rows without the files behind them — every imaged post would render
+ * a broken <img>. Mock heroes are seeded by (world.seed, postStreamKey), never
+ * by row UUID, so they re-render byte-identical; live renders (png/webp) cannot
+ * be re-derived and are left alone.
+ */
+export function restoreMissingHeroFiles(): { restored: number; skipped: number } {
+  const rows = db.select().from(posts).where(isNotNull(posts.imageUrl)).all();
+  let restored = 0;
+  let skipped = 0;
+  for (const post of rows) {
+    const url = post.imageUrl!;
+    if (!url.startsWith(`${PUBLIC_PREFIX}/`)) continue;
+    const file = path.join(OUTPUT_DIR, url.slice(PUBLIC_PREFIX.length + 1));
+    if (fs.existsSync(file)) continue;
+    if (!file.endsWith(".svg")) {
+      skipped++;
+      continue;
+    }
+    const world = db.select().from(worlds).where(eq(worlds.id, post.worldId)).get();
+    if (!world) continue;
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+    fs.writeFileSync(
+      file,
+      new TextEncoder().encode(
+        mockHeroSvg(post.archetype as Archetype, post.creativeBrief, world.seed, postStreamKey(post)),
+      ),
+    );
+    restored++;
+  }
+  return { restored, skipped };
+}
+
 // (media-type -> extension now lives in imageProvider, next to the fetch that needs it)
 
+// Grades of grey per archetype — the feed is a monochrome publication, so the
+// mock heroes are too. Distinctness comes from value, not hue.
 const MOCK_PALETTE: Record<Archetype, [string, string]> = {
-  education: ["#38bdf8", "#34d399"],
-  story: ["#a78bfa", "#fb7185"],
-  meme: ["#fbbf24", "#fb7185"],
-  product: ["#34d399", "#38bdf8"],
+  education: ["#e3e3e3", "#f6f6f6"],
+  story: ["#cfcfcf", "#ededed"],
+  meme: ["#b8b8b8", "#e2e2e2"],
+  product: ["#d9d9d9", "#f1f1f1"],
 };
 
 function escapeXml(value: string): string {

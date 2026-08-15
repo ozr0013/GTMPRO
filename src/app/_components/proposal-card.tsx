@@ -42,7 +42,7 @@ export function ProposalCard({ proposal, index }: { proposal: ProposalView; inde
   return (
     <article className="mt-4 overflow-hidden rounded-3xl bg-card">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-6 py-4 md:px-8">
-        <span className="font-mono text-[0.75rem] text-signal tabular-nums">
+        <span className="font-mono text-[0.75rem] font-bold tabular-nums">
           {String(index + 1).padStart(2, "0")}
         </span>
         {/* dm_reply payloads have no archetype/timeSlot — filter empty chips */}
@@ -57,13 +57,13 @@ export function ProposalCard({ proposal, index }: { proposal: ProposalView; inde
           </span>
         ))}
         {proposal.riskClass === "sensitive" && (
-          <span className="rounded-full bg-destructive/10 px-3 py-1 text-[0.68rem] font-bold tracking-wider text-destructive uppercase">
+          <span className="rounded-full bg-foreground px-3 py-1 text-[0.68rem] font-bold tracking-wider text-background uppercase">
             sensitive · approval required
           </span>
         )}
         {proposal.dream && (
           <span
-            className="rounded-full bg-signal/10 px-3 py-1 font-mono text-[0.68rem] font-bold tracking-wider text-signal uppercase"
+            className="rounded-full border border-foreground/30 px-3 py-1 font-mono text-[0.68rem] font-bold tracking-wider uppercase"
             title={`Ranked against the agent's learned model of the audience (score ${proposal.dream.score}) — never the hidden config`}
           >
             dreamed #{proposal.dream.rank} of {proposal.dream.of}
@@ -82,7 +82,7 @@ export function ProposalCard({ proposal, index }: { proposal: ProposalView; inde
             {proposal.payload.caption ?? proposal.payload.text ?? ""}
           </p>
           {(proposal.payload.hashtags?.length ?? 0) > 0 && (
-            <p className="mt-3 font-mono text-[0.75rem] text-signal">
+            <p className="mt-3 font-mono text-[0.75rem] text-muted-foreground">
               {proposal.payload.hashtags!.join(" ")}
             </p>
           )}
@@ -107,7 +107,7 @@ export function ProposalCard({ proposal, index }: { proposal: ProposalView; inde
               <ul className="ruled mt-2 max-w-xl">
                 {proposal.ruleTexts.map((rule) => (
                   <li key={rule.ruleKey} className="flex gap-3 py-2.5">
-                    <span className="w-24 shrink-0 font-mono text-[0.68rem] text-signal">
+                    <span className="w-24 shrink-0 font-mono text-[0.68rem] font-medium">
                       {rule.ruleKey}
                     </span>
                     <span className="text-[0.85rem] text-muted-foreground">{rule.text}</span>
@@ -146,7 +146,7 @@ export function ProposalCard({ proposal, index }: { proposal: ProposalView; inde
               type="button"
               disabled={pending}
               onClick={() => setMode("reject")}
-              className="rounded-full px-6 py-3 text-[0.7rem] font-bold tracking-widest text-destructive uppercase transition-colors hover:bg-destructive/10 disabled:opacity-40"
+              className="rounded-full px-6 py-3 text-[0.7rem] font-bold tracking-widest text-muted-foreground uppercase transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
             >
               Reject
             </button>
@@ -206,7 +206,7 @@ export function ProposalCard({ proposal, index }: { proposal: ProposalView; inde
               type="button"
               disabled={pending || reason.trim().length === 0}
               onClick={() => decide("reject")}
-              className="rounded-full bg-destructive px-5 py-2.5 text-[0.7rem] font-bold tracking-widest text-white uppercase disabled:opacity-40"
+              className="rounded-full bg-foreground px-5 py-2.5 text-[0.7rem] font-bold tracking-widest text-background uppercase disabled:opacity-40"
             >
               Reject
             </button>

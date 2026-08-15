@@ -53,7 +53,7 @@ export default async function FeedPage() {
                     <span
                       className={
                         event.kind === "meeting_booked"
-                          ? "font-bold text-signal"
+                          ? "rounded bg-foreground px-1 font-bold text-background"
                           : "font-bold text-foreground"
                       }
                     >
@@ -77,7 +77,7 @@ export default async function FeedPage() {
           </div>
           <div className="mt-4 h-2 overflow-hidden rounded-full bg-muted">
             <div
-              className="h-full rounded-full bg-signal"
+              className="h-full rounded-full bg-foreground"
               style={{
                 width: `${imageBudget.total > 0 ? (imageBudget.used / imageBudget.total) * 100 : 0}%`,
               }}
@@ -90,7 +90,8 @@ export default async function FeedPage() {
             local render, so the demo runs with no API keys.
           </p>
           <p className="mt-3 text-[0.78rem] leading-relaxed text-muted-foreground">
-            Double-tap a card to like it. Counts animate whenever you advance the clock.
+            Counts are audience outcomes from the sim — they animate whenever you advance the
+            clock.
           </p>
         </section>
       </aside>

@@ -115,7 +115,7 @@ export default async function Page() {
             </p>
             <Link
               href="/analytics"
-              className="mt-4 inline-block text-[0.7rem] font-bold tracking-widest uppercase hover:text-signal"
+              className="mt-4 inline-block text-[0.7rem] font-bold tracking-widest uppercase hover:text-muted-foreground"
             >
               Full analytics →
             </Link>
@@ -133,7 +133,7 @@ export default async function Page() {
             </p>
             <Link
               href="/brain"
-              className="mt-4 inline-block text-[0.7rem] font-bold tracking-widest uppercase hover:text-signal"
+              className="mt-4 inline-block text-[0.7rem] font-bold tracking-widest uppercase hover:text-muted-foreground"
             >
               Open the brain →
             </Link>
@@ -176,7 +176,7 @@ export default async function Page() {
             </div>
             <Link
               href="/activity"
-              className="shrink-0 text-[0.7rem] font-bold tracking-widest uppercase hover:text-signal"
+              className="shrink-0 text-[0.7rem] font-bold tracking-widest uppercase hover:text-muted-foreground"
             >
               Full log →
             </Link>

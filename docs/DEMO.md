@@ -81,14 +81,16 @@ Platform is always called Pictogram on screen and out loud.
 
 `npx tsx scripts/build-demo.ts` rebuilds the committed `demo-snapshot.db` — 20 sim days,
 seeded so every beat above is **already in the data** and nothing has to be generated on
-camera. It prints a checklist; all of these must read YES before demo day:
+camera. It prints a checklist; all of these must match before demo day:
 
 ```
 rejection -> rule : YES   (a rule sourced from the typed rejection)
-pending proposal  : YES   (so /approvals is not empty on screen)
+pending proposal  : none here — EXPECTED once autonomy is earned
+                    (scenes 0:45–1:30 run on the fresh world created on camera)
 meeting booked    : YES   (the funnel reaches the money metric)
 reveal Content archetype: MATCH
-rules with measured track record: 4/4
+rules with measured track record: 8/8
+earned autonomy   : YES
 ```
 
 `npm run demo` starts from a fresh copy (`demo-run.db`) every time, so a stray click during

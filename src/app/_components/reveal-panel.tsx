@@ -20,7 +20,7 @@ function AffinityCell({ value, isBest }: { value: number; isBest: boolean }) {
       <div
         className={cn(
           "flex h-9 items-center justify-center rounded-lg font-mono text-[0.72rem] tabular-nums",
-          isBest && "ring-2 ring-signal",
+          isBest && "ring-2 ring-foreground ring-offset-2 ring-offset-card",
         )}
         style={{
           backgroundColor: `color-mix(in oklch, var(--foreground) ${Math.round(value * 88)}%, var(--card))`,
@@ -126,10 +126,11 @@ export function RevealPanel({ reveal }: { reveal: GroundTruthReveal | null }) {
               </>
             ) : (
               <>
+                {/* verdicts in ink weight: a Match is full ink, a Not-yet recedes */}
                 <p
                   className={cn(
                     "figure mt-3 text-[1.9rem] capitalize",
-                    d.agrees ? "text-positive" : "text-caution",
+                    d.agrees ? "text-foreground" : "text-muted-foreground",
                   )}
                 >
                   {d.agrees ? "Match" : "Not yet"}
@@ -224,7 +225,7 @@ export function RevealPanel({ reveal }: { reveal: GroundTruthReveal | null }) {
               key={rule.ruleKey}
               className="flex items-baseline gap-4 border-b px-6 py-3 last:border-b-0 md:px-10"
             >
-              <span className="w-24 shrink-0 font-mono text-[0.65rem] text-signal">
+              <span className="w-24 shrink-0 font-mono text-[0.65rem] font-medium">
                 {rule.ruleKey}
               </span>
               <span className="flex-1 text-[0.85rem] leading-relaxed">{rule.text}</span>
