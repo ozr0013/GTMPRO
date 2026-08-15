@@ -1,6 +1,23 @@
 # Demo Script (3-5 minutes)
 
-Target runtime 4:50. Rehearse twice from a fresh seed before recording (Task F2). The script assumes Tracks A/B/C have landed; per-scene fallbacks are noted where a piece may not be built yet. Platform is always called Pictogram on screen and out loud.
+**Presented live, in person.** No second take — rehearse until it fits.
+
+## Run it
+
+```bash
+npm run demo      # resets demo-run.db from the snapshot, starts in mock mode
+```
+
+That is the only command you need. It works from a clean checkout with **no API keys**,
+resets state every time so each rehearsal starts identically, and never touches the
+committed `demo-snapshot.db`. Do not run the demo against local models — a single sim-day
+advance takes minutes.
+
+Target runtime 4:50, which is over the 5:00 ceiling if anything runs long — the two scenes
+to protect are **2:45 (the learning moment)** and **4:00 (the reveal)**. If you are losing
+time, cut 0:00 genesis and open on the pre-built world instead.
+
+Platform is always called Pictogram on screen and out loud.
 
 ## 0:00 — Genesis onboarding
 
