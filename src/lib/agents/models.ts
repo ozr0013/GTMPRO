@@ -3,6 +3,7 @@
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { openai } from "@ai-sdk/openai";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { z } from "zod";
 import { subRng, pick } from "@/lib/rng";
 import {
@@ -26,9 +27,49 @@ export type AgentRole =
   | "persona"
   | "genesis";
 
+/** true when running against a local OpenAI-compatible server (Ollama) instead of cloud APIs */
+export function isLocalProvider(): boolean {
+  return (process.env.MODEL_PROVIDER ?? "cloud") === "local";
+}
+
+/** Local model names per role group. Cheap roles default to the judge model so
+ * low-RAM machines keep only two models resident (see docs/LOCAL_MODELS.md). */
+export function localModelNames() {
+  const actor = process.env.MODEL_ACTOR_LOCAL ?? "qwen3:8b";
+  const judge = process.env.MODEL_JUDGE_LOCAL ?? "gemma3:4b";
+  const cheap = process.env.MODEL_CHEAP_LOCAL ?? judge;
+  return { actor, judge, cheap };
+}
+
+function localModelNameFor(role: AgentRole): string {
+  const { actor, judge, cheap } = localModelNames();
+  switch (role) {
+    case "strategist":
+    case "copywriter":
+    case "coach":
+    case "genesis":
+      return actor;
+    case "critic":
+    case "analyst":
+      return judge;
+    case "community":
+    case "persona":
+      return cheap;
+  }
+}
+
 // Cross-family assignment is intentional: evaluators (critic/analyst) are a different
 // model family than the actors they judge (self-preference bias mitigation — see README).
+// Cloud: Claude acts, GPT judges. Local: Qwen acts, Gemma judges — same principle,
+// zero API cost (see docs/LOCAL_MODELS.md).
 export function modelFor(role: AgentRole) {
+  if (isLocalProvider()) {
+    const local = createOpenAICompatible({
+      name: "ollama",
+      baseURL: process.env.LOCAL_BASE_URL ?? "http://localhost:11434/v1",
+    });
+    return local(localModelNameFor(role));
+  }
   const actor = process.env.MODEL_ACTOR ?? "claude-sonnet-4-5";
   const judge = process.env.MODEL_JUDGE ?? "gpt-5";
   const cheap = process.env.MODEL_CHEAP ?? "gpt-5-mini";
@@ -59,13 +100,24 @@ export async function callAgent<T>(
   if ((process.env.MODEL_MODE ?? "mock") === "mock") {
     return { ok: true, data: mockFor(role, opts, user) as T };
   }
+  const isJudge = role === "critic" || role === "analyst";
+  let effectiveSystem = system;
+  let temperature: number | undefined;
+  if (isLocalProvider()) {
+    // Qwen3 emits <think> blocks by default; suppress for clean structured output.
+    if (localModelNameFor(role).startsWith("qwen3")) {
+      effectiveSystem = `${system}\n/no_think`;
+    }
+    temperature = isJudge ? 0.2 : 0.7; // steadier judgments on small local models
+  }
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const { object } = await generateObject<z.ZodType<T>, "object", T>({
         model: modelFor(role),
         schema,
-        system,
+        system: effectiveSystem,
         prompt: user,
+        temperature,
       });
       return { ok: true, data: object };
     } catch (err) {

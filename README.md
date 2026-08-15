@@ -48,6 +48,8 @@ flowchart LR
 
 **Actors and their evaluators are deliberately different model families.** LLM judges systematically favor their own outputs (~10% for GPT-4o, up to ~25% for Claude models, plus same-family bias — Panickssery et al., [arXiv:2410.21819](https://arxiv.org/abs/2410.21819)). Claude acts; GPT judges. The evaluation signal that drives learning is independent of the writer by construction.
 
+**Fully local, zero-API-key mode:** set `MODEL_PROVIDER=local` and the same loop runs on free local models via Ollama — Qwen3 acts, Gemma 3 judges (family separation preserved), tiered configs down to 12 GB laptops. See `docs/LOCAL_MODELS.md`.
+
 ## Self-improvement = behavior change, not stored notes
 
 1. **Outcome learning** — the Analyst grades every post against the Strategist's predicted ranges; rewards update bandit posteriors (4 archetypes × 3 time slots) and become playbook rule proposals.

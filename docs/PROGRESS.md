@@ -37,6 +37,7 @@ Suite at last update: **49 tests green across 16 files** (Track A sim + Track B 
 | B3 edit-distillation (wordDiff in coach) | done | tests/edit-distillation.test.ts |
 | B4 autopilot + expiry + budgets | done | publisher.ts expireStaleProposals wired into clock day-boundary |
 | B5 rollback + quarantine surfacing | done | orchestrator getQuarantined/rollbackPlaybook + tests |
+| B6 local models (NEW, owner: Minh) | todo | code + runbook landed (docs/LOCAL_MODELS.md); Minh: install Ollama, pull tier models, run smoke + e2e-drive live-local, report results |
 
 ## Track C — Mission Control UX (owner: Omar)
 

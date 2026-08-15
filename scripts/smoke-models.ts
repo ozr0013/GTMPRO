@@ -36,29 +36,50 @@ function loadEnvLocal(): void {
 
 async function main() {
   loadEnvLocal();
-  const checks: [string, () => Promise<unknown>][] = [
-    [
-      "anthropic actor",
-      () => generateText({ model: anthropic(process.env.MODEL_ACTOR ?? "claude-sonnet-4-5"), prompt: "Say OK" }),
-    ],
-    [
-      "openai judge",
-      () => generateText({ model: openai(process.env.MODEL_JUDGE ?? "gpt-5"), prompt: "Say OK" }),
-    ],
-    [
-      "openai cheap",
-      () => generateText({ model: openai(process.env.MODEL_CHEAP ?? "gpt-5-mini"), prompt: "Say OK" }),
-    ],
-    [
-      "image model",
-      () =>
-        generateImage({
-          model: openai.image(process.env.MODEL_IMAGE ?? "gpt-image-1"),
-          prompt: "A cup of coffee, flat vector",
-          size: "1024x1024",
-        }),
-    ],
-  ];
+
+  let checks: [string, () => Promise<unknown>][];
+  if ((process.env.MODEL_PROVIDER ?? "cloud") === "local") {
+    // Local (Ollama) mode: three text models, no image model (feed uses placeholder
+    // creative cards by design). Setup runbook: docs/LOCAL_MODELS.md
+    const { createOpenAICompatible } = await import("@ai-sdk/openai-compatible");
+    const local = createOpenAICompatible({
+      name: "ollama",
+      baseURL: process.env.LOCAL_BASE_URL ?? "http://localhost:11434/v1",
+    });
+    const actor = process.env.MODEL_ACTOR_LOCAL ?? "qwen3:8b";
+    const judge = process.env.MODEL_JUDGE_LOCAL ?? "gemma3:4b";
+    const cheap = process.env.MODEL_CHEAP_LOCAL ?? judge;
+    checks = [
+      [`local actor (${actor})`, () => generateText({ model: local(actor), prompt: "Say OK" })],
+      [`local judge (${judge})`, () => generateText({ model: local(judge), prompt: "Say OK" })],
+      [`local cheap (${cheap})`, () => generateText({ model: local(cheap), prompt: "Say OK" })],
+    ];
+    console.log("MODEL_PROVIDER=local — checking Ollama models (image generation: skipped, placeholders by design)");
+  } else {
+    checks = [
+      [
+        "anthropic actor",
+        () => generateText({ model: anthropic(process.env.MODEL_ACTOR ?? "claude-sonnet-4-5"), prompt: "Say OK" }),
+      ],
+      [
+        "openai judge",
+        () => generateText({ model: openai(process.env.MODEL_JUDGE ?? "gpt-5"), prompt: "Say OK" }),
+      ],
+      [
+        "openai cheap",
+        () => generateText({ model: openai(process.env.MODEL_CHEAP ?? "gpt-5-mini"), prompt: "Say OK" }),
+      ],
+      [
+        "image model",
+        () =>
+          generateImage({
+            model: openai.image(process.env.MODEL_IMAGE ?? "gpt-image-1"),
+            prompt: "A cup of coffee, flat vector",
+            size: "1024x1024",
+          }),
+      ],
+    ];
+  }
   let failed = 0;
   for (const [name, fn] of checks) {
     try {
