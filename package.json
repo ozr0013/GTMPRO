@@ -16,6 +16,7 @@
     "db:seed": "tsx scripts/seed-demo-world.ts",
     "demo": "tsx scripts/demo.ts",
     "slack:test": "tsx scripts/slack-test.ts",
+    "images:test": "tsx scripts/images-test.ts",
     "demo:build": "tsx scripts/build-demo.ts",
     "prewarm": "tsx scripts/prewarm-demo.ts",
     "smoke": "tsx scripts/smoke-models.ts"

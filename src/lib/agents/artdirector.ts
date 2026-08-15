@@ -9,7 +9,7 @@ import { posts, settings, worlds } from "@/lib/db/schema";
 import type { Archetype } from "@/lib/types";
 import { subRng } from "@/lib/rng";
 import { postStreamKey } from "@/lib/sim/streams";
-import { isLocalProvider } from "./models";
+import { generateImageBytes } from "./imageProvider";
 import { logActivity } from "./log";
 import { eq, and, isNotNull } from "drizzle-orm";
 import fs from "node:fs";
@@ -58,7 +58,32 @@ export interface HeroImageResult {
   ok: boolean;
   imageUrl?: string;
   reason?: string;
+  /** which generator actually produced it — "svg" means the fallback ran */
+  provider?: string;
+  /** set when a real generator was configured but failed, and svg stood in */
+  providerError?: string;
 }
+
+/**
+ * Diffusion models respond to comma-separated visual nouns and camera language,
+ * not to prose instructions — "Art direction: ..." mostly gets ignored, which is
+ * why the earlier prompt produced mush. Lead with the subject, then the shot,
+ * then the light, then quality terms.
+ *
+ * Each archetype gets its own look so a feed of four posts does not read as four
+ * variations of one stock photo.
+ */
+const ARCHETYPE_STYLE: Record<string, string> = {
+  education:
+    "clean flat-lay knolling composition, overhead shot, soft diffused daylight, muted neutral background, shallow depth of field",
+  story:
+    "candid documentary photograph, human hands in frame, warm golden-hour window light, lived-in setting, 35mm",
+  meme: "bold graphic still life, single hero subject, punchy saturated colour, hard directional light, seamless colour backdrop",
+  product:
+    "premium product photograph, three-quarter hero angle, soft box lighting with gentle reflections, matte surface, minimal props",
+};
+
+const QUALITY = "sharp focus, high detail, professional colour grading, editorial photography, 4k";
 
 /** Art direction prompt: the copywriter's brief plus house style, no caption text in-frame. */
 export function buildImagePrompt(post: {
@@ -66,12 +91,10 @@ export function buildImagePrompt(post: {
   topic: string;
   creativeBrief: string;
 }): string {
-  return [
-    `Social media hero image for a ${post.archetype} post about ${post.topic}.`,
-    `Art direction: ${post.creativeBrief}.`,
-    "Clean editorial photography style, natural light, uncluttered composition,",
-    "square crop, no text, no logos, no watermarks.",
-  ].join(" ");
+  const subject = post.creativeBrief.replace(/\s+/g, " ").trim();
+  const style = ARCHETYPE_STYLE[post.archetype] ?? ARCHETYPE_STYLE.education;
+  const topic = post.topic.replace(/-/g, " ");
+  return [subject, topic, style, QUALITY, "no text, no watermark, no logo"].join(", ");
 }
 
 export async function generateHeroImage(postId: string): Promise<HeroImageResult> {
@@ -99,29 +122,26 @@ export async function generateHeroImage(postId: string): Promise<HeroImageResult
   const prompt = buildImagePrompt(post);
   let filename: string;
   let bytes: Uint8Array;
+  let usedProvider: string = "svg";
+  let providerError: string | undefined;
 
   try {
-    // Mock mode has no network at all; local mode has an Ollama text server but no
-    // image model, and the local runbook specifies rendering the styled creative
-    // brief instead. Both take the seeded local render.
-    if ((process.env.MODEL_MODE ?? "mock") === "mock" || isLocalProvider()) {
+    // Try the configured generator first; `svg` short-circuits with no network.
+    const { image, error } = await generateImageBytes(prompt);
+    providerError = error;
+
+    if (image) {
+      filename = `${postId}.${image.ext}`;
+      bytes = image.bytes;
+      usedProvider = image.provider;
+    } else {
+      // Fallback, and the offline default: a seeded local render. Keyed on the
+      // post's stable stream key rather than its UUID so the same scenario draws
+      // byte-identical art and demo screenshots do not drift.
       filename = `${postId}.svg`;
       bytes = new TextEncoder().encode(
-        // keyed on the post's stable stream key, not its UUID, so the same seeded
-        // scenario renders byte-identical art and demo screenshots don't drift
         mockHeroSvg(post.archetype as Archetype, post.creativeBrief, world.seed, postStreamKey(post)),
       );
-    } else {
-      // imported lazily so mock mode never pulls the provider client into the process
-      const { generateImage } = await import("ai");
-      const { openai } = await import("@ai-sdk/openai");
-      const { image } = await generateImage({
-        model: openai.image(process.env.MODEL_IMAGE ?? "gpt-image-1"),
-        prompt,
-        size: "1024x1024",
-      });
-      filename = `${postId}.${extensionFor(image.mediaType)}`;
-      bytes = image.uint8Array;
     }
 
     fs.mkdirSync(OUTPUT_DIR, { recursive: true });
@@ -151,21 +171,20 @@ export async function generateHeroImage(postId: string): Promise<HeroImageResult
     actor: "artdirector",
     action: "generate_image",
     status: "ok",
-    summary: `Hero image generated (${gate.remaining} left in budget)`,
+    // name the provider: silently falling back to the placeholder while the
+    // operator believes a GPU is rendering is the confusing failure here
+    summary: providerError
+      ? `Hero image fell back to placeholder — ${providerError}`
+      : `Hero image generated via ${usedProvider} (${gate.remaining} left in budget)`,
     refType: "post",
     refId: postId,
-    detail: { prompt, imageUrl },
+    detail: { prompt, imageUrl, provider: usedProvider, providerError },
   });
 
-  return { ok: true, imageUrl };
+  return { ok: true, imageUrl, provider: usedProvider, providerError };
 }
 
-function extensionFor(mediaType: string): string {
-  if (mediaType.includes("png")) return "png";
-  if (mediaType.includes("webp")) return "webp";
-  if (mediaType.includes("jpeg") || mediaType.includes("jpg")) return "jpg";
-  return "png";
-}
+// (media-type -> extension now lives in imageProvider, next to the fetch that needs it)
 
 const MOCK_PALETTE: Record<Archetype, [string, string]> = {
   education: ["#38bdf8", "#34d399"],
