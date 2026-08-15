@@ -67,6 +67,10 @@ export function modelFor(role: AgentRole) {
     const local = createOpenAICompatible({
       name: "ollama",
       baseURL: process.env.LOCAL_BASE_URL ?? "http://localhost:11434/v1",
+      // Ollama supports schema-constrained decoding via response_format;
+      // without this flag generateObject falls back to prompt-based JSON
+      // and small local models fail schema validation.
+      supportsStructuredOutputs: true,
     });
     return local(localModelNameFor(role));
   }

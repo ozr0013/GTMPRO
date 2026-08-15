@@ -143,7 +143,7 @@ async function main() {
 
   const world2 = db.select().from(worlds).where(eq(worlds.id, worldId)).get()!;
   console.log(`\nWorld tick now: ${world2.simTick} (Day ${Math.floor(world2.simTick / 24) + 1})`);
-  console.log("Open http://localhost:3001 to explore this state in Mission Control.");
+  console.log("Open http://localhost:3000 to explore this state in Mission Control.");
 }
 
 main().catch((err) => {

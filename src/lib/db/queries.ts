@@ -216,7 +216,8 @@ export interface ProposalView {
   id: string;
   kind: string;
   status: string;
-  payload: PostPayload;
+  /** post proposals carry PostPayload fields; dm_reply proposals carry { threadId, text, qualification } */
+  payload: Partial<PostPayload> & { text?: string; threadId?: string };
   reasoning: string;
   ruleIds: string[];
   ruleTexts: { ruleKey: string; text: string; category: string }[];

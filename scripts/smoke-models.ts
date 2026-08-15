@@ -45,6 +45,7 @@ async function main() {
     const local = createOpenAICompatible({
       name: "ollama",
       baseURL: process.env.LOCAL_BASE_URL ?? "http://localhost:11434/v1",
+      supportsStructuredOutputs: true,
     });
     const actor = process.env.MODEL_ACTOR_LOCAL ?? "qwen3:8b";
     const judge = process.env.MODEL_JUDGE_LOCAL ?? "gemma3:4b";

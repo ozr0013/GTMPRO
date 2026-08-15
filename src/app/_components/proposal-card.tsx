@@ -20,7 +20,7 @@ type Mode = "reject" | "edit" | null;
 export function ProposalCard({ proposal, index }: { proposal: ProposalView; index: number }) {
   const [mode, setMode] = useState<Mode>(null);
   const [reason, setReason] = useState("");
-  const [caption, setCaption] = useState(proposal.payload.caption);
+  const [caption, setCaption] = useState(proposal.payload.caption ?? proposal.payload.text ?? "");
   const [pending, startTransition] = useTransition();
   const router = useRouter();
 
@@ -45,7 +45,10 @@ export function ProposalCard({ proposal, index }: { proposal: ProposalView; inde
         <span className="font-mono text-[0.75rem] text-signal tabular-nums">
           {String(index + 1).padStart(2, "0")}
         </span>
-        {[proposal.kind, proposal.payload.archetype, proposal.payload.timeSlot].map((chip) => (
+        {/* dm_reply payloads have no archetype/timeSlot — filter empty chips */}
+        {[proposal.kind, proposal.payload.archetype, proposal.payload.timeSlot]
+          .filter((chip): chip is string => Boolean(chip))
+          .map((chip) => (
           <span
             key={chip}
             className="rounded-full bg-muted px-3 py-1 text-[0.68rem] font-bold tracking-wider uppercase"
@@ -65,20 +68,25 @@ export function ProposalCard({ proposal, index }: { proposal: ProposalView; inde
 
       <div className="grid lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="px-6 py-7 md:px-8 lg:border-r">
-          {/* the draft is the thing being judged, so it gets display type */}
-          <p className="display-sm max-w-xl text-[1.5rem]">{proposal.payload.caption}</p>
-          {proposal.payload.hashtags.length > 0 && (
+          {/* the draft is the thing being judged, so it gets display type.
+              dm_reply payloads carry `text` instead of caption/hashtags/brief. */}
+          <p className="display-sm max-w-xl text-[1.5rem]">
+            {proposal.payload.caption ?? proposal.payload.text ?? ""}
+          </p>
+          {(proposal.payload.hashtags?.length ?? 0) > 0 && (
             <p className="mt-3 font-mono text-[0.75rem] text-signal">
-              {proposal.payload.hashtags.join(" ")}
+              {proposal.payload.hashtags!.join(" ")}
             </p>
           )}
 
-          <div className="mt-7">
-            <p className="eyebrow">Creative brief</p>
-            <p className="mt-2 text-[0.88rem] text-muted-foreground">
-              {proposal.payload.creativeBrief}
-            </p>
-          </div>
+          {proposal.payload.creativeBrief && (
+            <div className="mt-7">
+              <p className="eyebrow">Creative brief</p>
+              <p className="mt-2 text-[0.88rem] text-muted-foreground">
+                {proposal.payload.creativeBrief}
+              </p>
+            </div>
+          )}
 
           <div className="mt-6">
             <p className="eyebrow">Why this action</p>
