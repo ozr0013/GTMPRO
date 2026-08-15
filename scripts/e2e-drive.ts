@@ -1,10 +1,38 @@
-// End-to-end loop driver (mock mode): plays a realistic session against the
-// current DB so the UI has rich state and the full reason->action->evaluation->
-// improvement cycle is observable. Safe to re-run; also used for demo prep.
+// End-to-end loop driver: plays a realistic session against the current DB so
+// the UI has rich state and the full reason->action->evaluation->improvement
+// cycle is observable. Respects MODEL_MODE / MODEL_PROVIDER from .env.local.
 //
 //   npx tsx scripts/e2e-drive.ts
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { db } from "@/lib/db/client";
+
+/** Minimal .env.local loader (no deps). Already-set env vars win. */
+function loadEnvLocal(): void {
+  let raw: string;
+  try {
+    raw = readFileSync(resolve(process.cwd(), ".env.local"), "utf8");
+  } catch {
+    return;
+  }
+  for (const line of raw.split(/\r?\n/)) {
+    const m = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line);
+    if (!m) continue;
+    const key = m[1];
+    let value = m[2].trim();
+    const quote = value[0];
+    if ((quote === '"' || quote === "'") && value.length >= 2 && value.endsWith(quote)) {
+      value = value.slice(1, -1);
+    } else {
+      const hash = value.indexOf("#");
+      if (hash !== -1) value = value.slice(0, hash).trim();
+    }
+    if (!(key in process.env)) process.env[key] = value;
+  }
+}
+
+loadEnvLocal();
 import {
   worlds,
   posts,
