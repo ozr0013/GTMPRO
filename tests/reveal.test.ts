@@ -3,6 +3,7 @@ import { buildTinyWorld } from "./fixtures/world";
 import { db } from "@/lib/db/client";
 import { banditArms, banditObservations } from "@/lib/db/schema";
 import { getGroundTruthReveal } from "@/lib/db/queries";
+import { generateWorld } from "@/lib/sim/genesis";
 import { and, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
@@ -52,5 +53,21 @@ describe("ground-truth reveal (brain answer key)", () => {
     expect(reveal.champion).toEqual({ archetype: "education", timeSlot: "midday", observations: 1 });
     expect(reveal.agreement).toBe("match");
     expect(reveal.arms.find((a) => a.isChampion)?.isTrueBest).toBe(true);
+  });
+
+  it("holds together on a genesis-scale world (100 personas)", async () => {
+    const { worldId } = await generateWorld("Cold brew concentrate for coffee obsessives", {
+      seed: "reveal-genesis",
+    });
+    const reveal = getGroundTruthReveal(worldId);
+
+    expect(reveal.segments.reduce((s, seg) => s + seg.personaCount, 0)).toBe(100);
+    expect(reveal.arms).toHaveLength(12);
+    // normalization invariants: shares sum to 1, exactly one arm reads 1.00
+    expect(reveal.slotActivity.reduce((s, x) => s + x.share, 0)).toBeCloseTo(1, 5);
+    expect(reveal.arms.filter((a) => a.trueScore === 1)).toHaveLength(1);
+    expect(reveal.arms.filter((a) => a.isTrueBest)).toHaveLength(1);
+    expect(reveal.agreement).toBe("untested"); // nothing observed yet
+    expect(reveal.learnedRules.length).toBeGreaterThan(0); // seed content/timing hypotheses
   });
 });
