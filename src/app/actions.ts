@@ -7,14 +7,17 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { WORLD_COOKIE } from "./current-world";
 import { db } from "@/lib/db/client";
-import { settings } from "@/lib/db/schema";
+import { settings, proposals } from "@/lib/db/schema";
 import { advanceTicks } from "@/lib/sim/clock";
 import { generateWorld } from "@/lib/sim/genesis";
-import { decideProposal, runHeartbeat, type Decision } from "@/lib/agents/orchestrator";
+import { decideProposal, runHeartbeat } from "@/lib/agents/orchestrator";
 import { logActivity } from "@/lib/agents/log";
 import { rollbackTo } from "@/lib/learning/playbook";
 import { getWorld } from "@/lib/db/queries";
+import type { PostPayload } from "@/lib/types";
 import { eq } from "drizzle-orm";
+
+type Decision = "approve" | "reject" | "edit";
 
 function refreshAll() {
   revalidatePath("/", "layout");
@@ -36,7 +39,14 @@ export async function decideAction(
   reason?: string,
   editedCaption?: string,
 ): Promise<void> {
-  decideProposal(proposalId, decision, reason, editedCaption);
+  let editedPayload: PostPayload | undefined;
+  if (decision === "edit" && editedCaption) {
+    const proposal = db.select().from(proposals).where(eq(proposals.id, proposalId)).get();
+    if (proposal) {
+      editedPayload = { ...(proposal.payload as PostPayload), caption: editedCaption };
+    }
+  }
+  await decideProposal(proposalId, decision, { reason, editedPayload });
   refreshAll();
 }
 
@@ -101,7 +111,7 @@ export async function createWorldAction(
   name: string,
   productDescription: string,
 ): Promise<GenesisResult> {
-  const { worldId, segments, topics } = generateWorld({ name, productDescription });
+  const { worldId, segments, topics } = await generateWorld(productDescription, { name });
   (await cookies()).set(WORLD_COOKIE, worldId, { httpOnly: true, sameSite: "lax", path: "/" });
   refreshAll();
   return {

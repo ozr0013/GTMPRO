@@ -17,7 +17,7 @@ Update this every working session. Definition of done: code + tests + a row here
 | README, HANDOFF, PROGRESS | done | this commit |
 | First push + branch workflow | done | main + track branches on ozr0013/GTMPRO |
 
-Suite at last update: **24 tests green** (engine 3, learning 6, contracts 7, loop 2, genesis 2, ambient 4).
+Suite at last update: **49 tests green across 16 files** (Track A sim + Track B agent/learning suites + loop integration).
 
 ## Track A — Simulator (owner: Anurup)
 
@@ -28,27 +28,28 @@ Suite at last update: **24 tests green** (engine 3, learning 6, contracts 7, loo
 | A3 algorithm dynamics + ambient | partial | ambient content + clock wiring done; early-velocity boost + follower churn remain (needs idempotent second wave) |
 | A4 golden-run regression test | todo | after A2/A3 settle |
 
-## Track B — Agents & learning (owner: unassigned)
+## Track B — Agents & learning (owner: Minh)
 
-| Task | Status |
-|---|---|
-| B1 bandit lifecycle (arm stats in strategist context, posteriors API) | todo |
-| B2 calibration tracking | todo |
-| B3 edit-distillation (word-diff of human edits) | todo |
-| B4 autopilot + budget enforcement + proposal expiry | partial (gate + caps exist; expiry + image budget spend todo) |
-| B5 rollback surfacing + quarantine UX data | todo |
+| Task | Status | Notes |
+|---|---|---|
+| B1 bandit lifecycle | done | merged from minh-agent; tests/bandit-lifecycle.test.ts |
+| B2 calibration tracking | done | src/lib/learning/calibration.ts + tests |
+| B3 edit-distillation (wordDiff in coach) | done | tests/edit-distillation.test.ts |
+| B4 autopilot + expiry + budgets | done | publisher.ts expireStaleProposals wired into clock day-boundary |
+| B5 rollback + quarantine surfacing | done | orchestrator getQuarantined/rollbackPlaybook + tests |
 
-## Track C — Mission Control UX (owner: unassigned)
+## Track C — Mission Control UX (owner: Omar)
 
-| Task | Status |
-|---|---|
-| C1 phone-frame feed polish | todo (minimal feed exists) |
-| C2 Brain view (playbook diffs, posteriors, calibration) | todo |
-| C3 funnel analytics | todo |
-| C4 genesis onboarding UI | todo (generateWorld API ready) |
-| C5 hero images + demo prewarm | todo |
+| Task | Status | Notes |
+|---|---|---|
+| C1 phone-frame feed | done | merged from oz/track-c-mission-control (phone-feed component) |
+| C2 Brain view (playbook diffs, arm grid, calibration charts) | done | brain-view, arm-grid, calibration-charts components |
+| C3 funnel analytics | done | analytics page + filters |
+| C4 genesis onboarding UI | done | onboarding page + genesis-form, world cookie switcher |
+| C5 hero images + demo prewarm (demo-snapshot.db) | todo | last remaining C task |
 
 ## Shared-file change announcements (additive-only rule)
 
 - 2026-08-14: `src/lib/contracts.ts` + `GenesisOutput`; `src/lib/types.ts` + `AmbientAccount`, `WorldConfig.ambient?`; `src/lib/agents/models.ts` + `genesis` role (Track A / A1).
 - 2026-08-14: `posts.banditArmId` column existed from Phase 0 schema; no schema changes since first push.
+- 2026-08-14 (team merge): minh-agent and oz/track-c-mission-control merged into main with track-owner priority. New modules: `agents/publisher.ts`, `agents/log.ts` (object-form `logActivity`), `learning/calibration.ts`, `sim/{time,metrics,streams}.ts`, `app/current-world.ts`. Interface changes: `runCommunityPass(worldId)` replaces `runCommunity(worldId, tick)`; `logActivity` moved to `agents/log.ts`; `generateWorld(productDescription, { seed?, name? })` now returns `{ worldId, segments, topics }`; engine RNG streams keyed by `postStreamKey(post)` (content/slot) instead of post id.

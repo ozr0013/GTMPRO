@@ -7,7 +7,7 @@ import { buildTinyWorld } from "./fixtures/world";
 import { eq, and } from "drizzle-orm";
 
 async function ambientWorld(seed: string): Promise<string> {
-  const { worldId } = await generateWorld("Cold brew concentrate", seed);
+  const { worldId } = await generateWorld("Cold brew concentrate", { seed });
   return worldId;
 }
 

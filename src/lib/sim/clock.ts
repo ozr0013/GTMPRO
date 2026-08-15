@@ -6,8 +6,9 @@ import { worlds, posts, engagements, personas } from "@/lib/db/schema";
 import { runEngagementWave } from "@/lib/sim/engine";
 import { generateAmbientPosts } from "@/lib/sim/ambient";
 import { runFunnel } from "@/lib/sim/funnel";
-import { runHeartbeat, logActivity } from "@/lib/agents/orchestrator";
-import { runCommunity } from "@/lib/agents/communityRunner";
+import { runHeartbeat, expireStaleProposals } from "@/lib/agents/orchestrator";
+import { logActivity } from "@/lib/agents/log";
+import { runCommunityPass } from "@/lib/agents/communityRunner";
 import { runAnalyst } from "@/lib/agents/analystRunner";
 import { runCoach } from "@/lib/agents/coachRunner";
 import { callAgent } from "@/lib/agents/models";
@@ -35,7 +36,13 @@ export async function advanceTicks(worldId: string, n: number): Promise<{ tick: 
       .filter((p) => p.scheduledTick <= t);
     for (const post of due) {
       db.update(posts).set({ status: "published", publishedTick: t }).where(eq(posts.id, post.id)).run();
-      logActivity(worldId, t, "publisher", "publish_post", "published", `published: ${post.caption.slice(0, 80)}`, {
+      logActivity({
+        worldId,
+        tick: t,
+        actor: "publisher",
+        action: "publish_post",
+        status: "published",
+        summary: `published: ${post.caption.slice(0, 80)}`,
         refType: "post",
         refId: post.id,
       });
@@ -73,10 +80,11 @@ export async function advanceTicks(worldId: string, n: number): Promise<{ tick: 
     }
 
     // (d) community answers open DM threads
-    await runCommunity(worldId, t);
+    await runCommunityPass(worldId);
 
-    // (e) day boundary: analyst closes outcome windows, then coach learns
+    // (e) day boundary: expire stale proposals, analyst closes outcome windows, coach learns
     if (t % 24 === 0) {
+      expireStaleProposals(worldId, t);
       await runAnalyst(worldId, t);
       await runCoach(worldId, t);
     }

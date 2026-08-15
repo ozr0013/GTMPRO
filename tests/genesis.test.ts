@@ -18,7 +18,7 @@ function personaFingerprint(worldId: string): string[] {
 
 describe("world genesis (mock mode)", () => {
   it("builds a complete ~100-persona world from a product description", async () => {
-    const { worldId } = await generateWorld(PRODUCT, "gen-seed-a");
+    const { worldId } = await generateWorld(PRODUCT, { seed: "gen-seed-a" });
 
     const world = db.select().from(worlds).where(eq(worlds.id, worldId)).get();
     expect(world).toBeDefined();
@@ -47,9 +47,9 @@ describe("world genesis (mock mode)", () => {
   });
 
   it("is deterministic for the same seed and distinct for different seeds", async () => {
-    const a = await generateWorld(PRODUCT, "gen-seed-same");
-    const b = await generateWorld(PRODUCT, "gen-seed-same");
-    const c = await generateWorld(PRODUCT, "gen-seed-other");
+    const a = await generateWorld(PRODUCT, { seed: "gen-seed-same" });
+    const b = await generateWorld(PRODUCT, { seed: "gen-seed-same" });
+    const c = await generateWorld(PRODUCT, { seed: "gen-seed-other" });
 
     expect(a.worldId).not.toBe(b.worldId);
     expect(personaFingerprint(a.worldId)).toEqual(personaFingerprint(b.worldId));

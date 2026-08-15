@@ -14,7 +14,7 @@ cp .env.example .env.local
 npm i
 npm run db:seed     # or wipe first: rm -f flywheel.db*
 npm run dev         # http://localhost:3000
-npm run verify      # typecheck + lint + 24 tests — must be green before merging
+npm run verify      # typecheck + lint + 49 tests — must be green before merging
 ```
 
 Gotchas:
@@ -30,9 +30,12 @@ Interface contracts and module ownership: `docs/ARCHITECTURE.md`. Task specs wit
 
 ## Next up per track (see PROGRESS.md for live status)
 
-- **Track A (Anurup)** — A2: persona-side DM continuation (open threads currently stall after the agent's reply unless qualification ended; personas should reply on later ticks based on dmOpenness/skepticism). A3 remainder: early-velocity boost + follower churn — requires making `runEngagementWave` idempotent per (post, persona) or adding a second-wave mechanism (see the deviation comment in `src/lib/sim/clock.ts`). A4: golden-run snapshot test guarding the whole sim against drift.
-- **Track B** — B1: feed real arm stats + Thompson sample into strategist context (the orchestrator currently samples an arm itself; strategist should receive and cite it). B2: calibration series + strategist self-awareness. B3: word-diff edit-distillation in the coach. B4: proposal expiry (48 ticks) + image-budget spend guard. B5: rollback server action + quarantine queries.
-- **Track C** — C4 genesis onboarding is the demo opener (call `generateWorld` from `src/lib/sim/genesis.ts` with a streaming progress UI); C2 Brain view is the judging centerpiece (playbook version diffs, 12-arm posterior grid, calibration chart); then C1 feed polish, C3 analytics, C5 hero images + `demo-snapshot.db` prewarm.
+Team merge landed: Minh's Track B (B1-B5 + 8 test suites) and Omar's Track C (full Mission Control: phone feed, approvals, brain, analytics, onboarding) are on main with track-owner priority; glue seams reconciled and the combined 49-test suite is green.
+
+- **Track A (Anurup)** — A2: persona-side DM continuation (open threads stall after the agent's reply unless qualification ended; personas should reply on later ticks based on dmOpenness/skepticism). A3 remainder: early-velocity boost + follower churn — requires an idempotent second engagement wave (see comment in `src/lib/sim/clock.ts`). A4: golden-run snapshot test guarding the whole sim against drift.
+- **Track B (Minh)** — B1-B5 merged. Remaining: image-budget spend guard for the art director, and porting any unique assertions from the pre-merge spine loop test if gaps appear.
+- **Track C (Omar)** — C5 only: hero-post image generation (`artdirector.ts`, gated by image budget) + `scripts/prewarm-demo.ts` producing the committed `demo-snapshot.db` offline fallback.
+- **All hands (submission)** — live-mode validation (`npm run smoke`, one real Claude+GPT run), rehearse `docs/DEMO.md` twice, record the 3-5 min video, final README pass.
 
 ## Known deliberate deviations
 
