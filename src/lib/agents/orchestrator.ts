@@ -372,6 +372,21 @@ async function processAction(
     refType: "proposal",
     refId: id,
   });
+  if (status === "auto_approved" && gate.earnedAutonomy) {
+    // the human gate was waived because the agent's predictions earned it —
+    // that is a trust event worth its own trail entry
+    logActivity({
+      worldId: world.id,
+      tick: world.simTick,
+      actor: "system",
+      action: "earned_autonomy",
+      status: "ok",
+      summary: `Auto-approved without the human gate: calibration hit-rate ${Math.round((gate.earnedAutonomy.hitRate ?? 0) * 100)}% over the last ${gate.earnedAutonomy.reports >= 5 ? 5 : gate.earnedAutonomy.reports} scored posts`,
+      refType: "proposal",
+      refId: id,
+      detail: gate.earnedAutonomy,
+    });
+  }
   if (status === "auto_approved") publishProposal(id);
   return id;
 }

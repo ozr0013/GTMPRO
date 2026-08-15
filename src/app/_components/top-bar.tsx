@@ -70,6 +70,14 @@ export function TopBar({ world, worlds }: { world: WorldSummary; worlds: WorldSu
           label="Mode"
           value={world.paused ? "HALTED" : world.mode === "autopilot" ? "AUTO" : "PROPOSE"}
         />
+        {world.earnedAutonomy && !world.paused && world.mode === "propose" && (
+          <span
+            className="shrink-0 rounded-full bg-signal/10 px-3 py-1.5 font-mono text-[0.65rem] font-bold tracking-wider text-signal uppercase"
+            title={`Calibration hit-rate ${Math.round((world.earnedAutonomyHitRate ?? 0) * 100)}% over the last 5 scored posts — low-risk actions auto-approve; sensitive actions stay human-gated`}
+          >
+            earned autonomy
+          </span>
+        )}
 
         <div className="ml-auto flex flex-wrap items-center gap-x-5 gap-y-3">
           <label className="flex items-center gap-2">

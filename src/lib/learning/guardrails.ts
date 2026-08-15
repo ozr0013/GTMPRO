@@ -1,5 +1,6 @@
 import { db } from "@/lib/db/client";
-import { settings, posts, funnelEvents } from "@/lib/db/schema";
+import { settings, posts, funnelEvents, outcomeReports } from "@/lib/db/schema";
+import { rollingHitRate } from "@/lib/learning/calibration";
 import { eq, and } from "drizzle-orm";
 
 export interface GuardrailAction {
@@ -7,6 +8,39 @@ export interface GuardrailAction {
   topic: string;
   scheduledTick: number;
   riskClass: "normal" | "sensitive";
+}
+
+/** Consecutive scored posts required before autonomy can be earned. */
+export const AUTONOMY_MIN_REPORTS = 5;
+/** Calibration hit-rate the strategist must sustain over that window. */
+export const AUTONOMY_HIT_RATE = 0.6;
+
+export interface AutonomyStatus {
+  earned: boolean;
+  hitRate: number | null;
+  reports: number;
+}
+
+/**
+ * Dynamic autonomy: the agent EARNS the right to skip the human gate on
+ * low-risk actions by predicting its own outcomes accurately — calibration
+ * hit-rate ≥ AUTONOMY_HIT_RATE over the last AUTONOMY_MIN_REPORTS scored posts.
+ * Sensitive actions stay human-gated forever; a calibration slump revokes the
+ * privilege automatically on the next check. Autonomy is derived, not stored,
+ * so it is always current and survives rollbacks.
+ */
+export function earnedAutonomy(worldId: string): AutonomyStatus {
+  const reports = db
+    .select()
+    .from(outcomeReports)
+    .where(eq(outcomeReports.worldId, worldId))
+    .all().length;
+  const hitRate = rollingHitRate(worldId, AUTONOMY_MIN_REPORTS);
+  return {
+    earned: reports >= AUTONOMY_MIN_REPORTS && (hitRate ?? 0) >= AUTONOMY_HIT_RATE,
+    hitRate,
+    reports,
+  };
 }
 
 /** THE single gate: every action (heartbeat, autopilot, publisher) goes through here. */
@@ -48,8 +82,19 @@ export function checkGuardrails(worldId: string, action: GuardrailAction) {
     if (dmsToday >= s.maxDmsPerDay) reasons.push(`DMs/day cap (${s.maxDmsPerDay}) reached`);
   }
 
-  const requiresApproval = s.mode === "propose" || action.riskClass === "sensitive";
-  return { allowed: reasons.length === 0, requiresApproval, reasons };
+  // Sensitive actions are always human-gated. Normal actions skip the gate in
+  // autopilot mode — or in propose mode once calibration accuracy has EARNED it.
+  const autonomy =
+    s.mode === "propose" && action.riskClass !== "sensitive" ? earnedAutonomy(worldId) : null;
+  const requiresApproval =
+    action.riskClass === "sensitive" || (s.mode === "propose" && !(autonomy?.earned ?? false));
+  return {
+    allowed: reasons.length === 0,
+    requiresApproval,
+    reasons,
+    /** set only when earned autonomy is what waived the human gate */
+    earnedAutonomy: autonomy?.earned ? autonomy : undefined,
+  };
 }
 
 /** Decrement imageBudget by 1. Track C art director is the only spender. */

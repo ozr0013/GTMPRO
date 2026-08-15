@@ -22,6 +22,7 @@ import {
 } from "./schema";
 import type { Archetype, PostPayload, PredictedEffect, TimeSlot } from "@/lib/types";
 import { TIME_SLOTS } from "@/lib/types";
+import { earnedAutonomy } from "@/lib/learning/guardrails";
 import { formatSimTime, TICKS_PER_DAY } from "@/lib/sim/time";
 import { postMetrics, type PostMetrics } from "@/lib/sim/metrics";
 import { getRulePerformance, type RulePerformance } from "@/lib/learning/ruleEvidence";
@@ -43,6 +44,9 @@ export interface WorldSummary {
   paused: boolean;
   playbookVersion: number;
   pendingCount: number;
+  /** calibration accuracy has earned the agent auto-approval on low-risk actions */
+  earnedAutonomy: boolean;
+  earnedAutonomyHitRate: number | null;
 }
 
 export function getWorlds(): WorldSummary[] {
@@ -71,6 +75,7 @@ export function getWorld(worldId: string): WorldSummary | null {
     .where(and(eq(proposals.worldId, worldId), eq(proposals.status, "pending")))
     .all();
 
+  const autonomy = earnedAutonomy(worldId);
   return {
     id: world.id,
     name: world.name,
@@ -85,6 +90,8 @@ export function getWorld(worldId: string): WorldSummary | null {
     paused: config?.paused ?? false,
     playbookVersion: version?.version ?? 0,
     pendingCount: pending.length,
+    earnedAutonomy: autonomy.earned,
+    earnedAutonomyHitRate: autonomy.hitRate,
   };
 }
 
