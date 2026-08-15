@@ -212,7 +212,11 @@ function mockFor(role: AgentRole, opts: { worldSeed: string; refId: string }, us
       // A rejection with a reason is the beat the product is judged on, so the
       // mock has to exercise it too — otherwise the offline demo never shows a
       // human turning the playbook.
-      const rejectionLike = /humanRejections_MUST_ADDRESS|humanSaid|rejectedCaption/i.test(user);
+      // Match on a field that only exists INSIDE an entry, never on the container
+      // key: the digest always emits `humanRejections_MUST_ADDRESS`, even empty, so
+      // matching that name made every cycle take this branch and re-propose the
+      // same rule — deduped to nothing, leaving the playbook frozen after v2.
+      const rejectionLike = /"humanSaid"/i.test(user);
       if (rejectionLike) {
         const proposalId = /"proposalId"\s*:\s*"([^"]+)"/.exec(user)?.[1] ?? opts.refId;
         return CoachOutput.parse({
