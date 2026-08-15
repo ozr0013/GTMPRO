@@ -19,14 +19,14 @@ function DensityStrip({ density, highlight }: { density: number[]; highlight: bo
     >
       <polygon
         points={`0,${height} ${points.join(" ")} ${width},${height}`}
-        className={cn(highlight ? "fill-signal/20" : "fill-foreground/8")}
+        className={cn(highlight ? "fill-foreground/20" : "fill-foreground/8")}
       />
       <polyline
         points={points.join(" ")}
         fill="none"
-        strokeWidth={1}
+        strokeWidth={highlight ? 1.5 : 1}
         vectorEffect="non-scaling-stroke"
-        className={cn(highlight ? "stroke-signal" : "stroke-foreground/35")}
+        className={cn(highlight ? "stroke-foreground" : "stroke-foreground/35")}
       />
     </svg>
   );
@@ -62,12 +62,12 @@ export function ArmGrid({ arms }: { arms: ArmView[] }) {
                     </span>
                   </div>
                   <div className="mt-1.5 flex items-baseline gap-2">
-                    <span
-                      className={cn("figure text-[1.75rem]", arm.isChampion && "text-signal")}
-                    >
-                      {arm.mean.toFixed(2)}
-                    </span>
-                    {arm.isChampion && <span className="eyebrow text-signal">champion</span>}
+                    <span className="figure text-[1.75rem]">{arm.mean.toFixed(2)}</span>
+                    {arm.isChampion && (
+                      <span className="eyebrow rounded-full bg-foreground px-2 py-0.5 !text-background">
+                        champion
+                      </span>
+                    )}
                   </div>
                   <div className="mt-2">
                     <DensityStrip density={arm.density} highlight={arm.isChampion} />

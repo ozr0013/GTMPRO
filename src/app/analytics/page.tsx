@@ -13,10 +13,11 @@ import { AnalyticsFilters } from "../_components/analytics-filters";
 
 export const dynamic = "force-dynamic";
 
+// monochrome verdicts: exceeded = inverted ink, met = muted, missed = outlined
 const VERDICT_STYLE: Record<string, string> = {
-  exceeded: "bg-positive/12 text-positive",
+  exceeded: "bg-foreground text-background",
   met: "bg-muted text-muted-foreground",
-  missed: "bg-destructive/10 text-destructive",
+  missed: "border border-foreground/50 text-foreground",
 };
 
 function parseFilters(params: Record<string, string | string[] | undefined>): FunnelFilters {

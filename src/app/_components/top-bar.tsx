@@ -24,7 +24,7 @@ function Readout({ label, value, accent }: { label: string; value: string; accen
     <div className="shrink-0">
       <div className="eyebrow">{label}</div>
       <div
-        className={`mt-1 font-mono text-[0.85rem] tabular-nums ${accent ? "text-signal" : ""}`}
+        className={`mt-1 font-mono text-[0.85rem] tabular-nums ${accent ? "font-bold" : ""}`}
       >
         {value}
       </div>
@@ -72,7 +72,7 @@ export function TopBar({ world, worlds }: { world: WorldSummary; worlds: WorldSu
         />
         {world.earnedAutonomy && !world.paused && world.mode === "propose" && (
           <span
-            className="shrink-0 rounded-full bg-signal/10 px-3 py-1.5 font-mono text-[0.65rem] font-bold tracking-wider text-signal uppercase"
+            className="shrink-0 rounded-full bg-foreground px-3 py-1.5 font-mono text-[0.65rem] font-bold tracking-wider text-background uppercase"
             title={`Calibration hit-rate ${Math.round((world.earnedAutonomyHitRate ?? 0) * 100)}% over the last 5 scored posts — low-risk actions auto-approve; sensitive actions stay human-gated`}
           >
             earned autonomy

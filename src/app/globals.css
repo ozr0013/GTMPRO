@@ -5,10 +5,10 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
-  Visual language: heavy black grotesque on a warm grey ground, with generously
-  rounded white cards carrying the content. Structure comes from card edges and
-  big graphic blocks rather than rules. Labels are small tracked mono; headlines
-  are tight and very bold.
+  Visual language: strict black and white. Heavy black grotesque on a paper-grey
+  ground, generously rounded white cards carrying the content. No hue anywhere —
+  meaning is carried by ink density, weight, borders and labels. Labels are small
+  tracked mono; headlines are tight and very bold.
 */
 
 @theme inline {
@@ -59,86 +59,90 @@
 }
 
 :root {
-  /* warm grey ground, pure white cards floating on it */
-  --background: oklch(0.928 0.004 84);
-  --foreground: oklch(0.155 0.004 60);
+  /* paper-grey ground, pure white cards floating on it, near-black ink —
+     every token is achromatic (oklch chroma 0) on purpose */
+  --background: oklch(0.965 0 0);
+  --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.155 0.004 60);
+  --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.155 0.004 60);
-  --primary: oklch(0.155 0.004 60);
-  --primary-foreground: oklch(0.995 0 0);
-  --secondary: oklch(0.955 0.003 84);
-  --secondary-foreground: oklch(0.215 0.004 60);
-  --muted: oklch(0.958 0.003 84);
-  --muted-foreground: oklch(0.505 0.006 70);
-  --accent: oklch(0.945 0.004 84);
-  --accent-foreground: oklch(0.195 0.004 60);
-  --destructive: oklch(0.53 0.19 27);
-  --border: oklch(0.885 0.004 84);
-  --input: oklch(0.885 0.004 84);
-  --ring: oklch(0.63 0.13 285);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.145 0 0);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.955 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.955 0 0);
+  --muted-foreground: oklch(0.48 0 0);
+  --accent: oklch(0.94 0 0);
+  --accent-foreground: oklch(0.185 0 0);
+  --destructive: oklch(0.145 0 0);
+  --border: oklch(0.9 0 0);
+  --input: oklch(0.9 0 0);
+  --ring: oklch(0.145 0 0);
   --radius: 1.25rem;
 
-  /* periwinkle, lifted from the APPLY NOW button tint */
-  --signal: oklch(0.575 0.155 285);
-  --positive: oklch(0.5 0.12 155);
-  --caution: oklch(0.62 0.13 70);
+  /* the old accent hues, now grades of ink: signal = full ink, positive = full
+     ink, caution = half ink. Components re-encode meaning with weight, borders
+     and fill inversion rather than hue. */
+  --signal: oklch(0.145 0 0);
+  --positive: oklch(0.145 0 0);
+  --caution: oklch(0.5 0 0);
 
-  --chart-1: oklch(0.575 0.155 285);
-  --chart-2: oklch(0.155 0.004 60);
-  --chart-3: oklch(0.5 0.12 155);
-  --chart-4: oklch(0.62 0.13 70);
-  --chart-5: oklch(0.62 0.008 70);
+  /* chart series separate by value, not hue */
+  --chart-1: oklch(0.145 0 0);
+  --chart-2: oklch(0.55 0 0);
+  --chart-3: oklch(0.35 0 0);
+  --chart-4: oklch(0.72 0 0);
+  --chart-5: oklch(0.5 0 0);
 
-  --sidebar: oklch(0.995 0 0);
-  --sidebar-foreground: oklch(0.155 0.004 60);
-  --sidebar-primary: oklch(0.155 0.004 60);
-  --sidebar-primary-foreground: oklch(0.995 0 0);
-  --sidebar-accent: oklch(0.945 0.004 84);
-  --sidebar-accent-foreground: oklch(0.155 0.004 60);
-  --sidebar-border: oklch(0.9 0.004 84);
-  --sidebar-ring: oklch(0.63 0.13 285);
+  --sidebar: oklch(0.99 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.145 0 0);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.94 0 0);
+  --sidebar-accent-foreground: oklch(0.145 0 0);
+  --sidebar-border: oklch(0.9 0 0);
+  --sidebar-ring: oklch(0.145 0 0);
 }
 
 .dark {
-  --background: oklch(0.17 0.004 70);
-  --foreground: oklch(0.965 0.003 84);
-  --card: oklch(0.215 0.005 70);
-  --card-foreground: oklch(0.965 0.003 84);
-  --popover: oklch(0.215 0.005 70);
-  --popover-foreground: oklch(0.965 0.003 84);
-  --primary: oklch(0.965 0.003 84);
-  --primary-foreground: oklch(0.185 0.005 70);
-  --secondary: oklch(0.272 0.006 70);
-  --secondary-foreground: oklch(0.965 0.003 84);
-  --muted: oklch(0.262 0.006 70);
-  --muted-foreground: oklch(0.702 0.006 78);
-  --accent: oklch(0.292 0.007 70);
-  --accent-foreground: oklch(0.975 0.003 84);
-  --destructive: oklch(0.68 0.17 27);
+  --background: oklch(0.16 0 0);
+  --foreground: oklch(0.96 0 0);
+  --card: oklch(0.21 0 0);
+  --card-foreground: oklch(0.96 0 0);
+  --popover: oklch(0.21 0 0);
+  --popover-foreground: oklch(0.96 0 0);
+  --primary: oklch(0.96 0 0);
+  --primary-foreground: oklch(0.18 0 0);
+  --secondary: oklch(0.27 0 0);
+  --secondary-foreground: oklch(0.96 0 0);
+  --muted: oklch(0.26 0 0);
+  --muted-foreground: oklch(0.7 0 0);
+  --accent: oklch(0.29 0 0);
+  --accent-foreground: oklch(0.97 0 0);
+  --destructive: oklch(0.96 0 0);
   --border: oklch(1 0 0 / 12%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.7 0.13 285);
+  --ring: oklch(0.96 0 0);
 
-  --signal: oklch(0.72 0.135 285);
-  --positive: oklch(0.7 0.12 155);
-  --caution: oklch(0.78 0.12 72);
+  --signal: oklch(0.96 0 0);
+  --positive: oklch(0.96 0 0);
+  --caution: oklch(0.7 0 0);
 
-  --chart-1: oklch(0.72 0.135 285);
-  --chart-2: oklch(0.965 0.003 84);
-  --chart-3: oklch(0.7 0.12 155);
-  --chart-4: oklch(0.78 0.12 72);
-  --chart-5: oklch(0.7 0.008 78);
+  --chart-1: oklch(0.96 0 0);
+  --chart-2: oklch(0.6 0 0);
+  --chart-3: oklch(0.78 0 0);
+  --chart-4: oklch(0.45 0 0);
+  --chart-5: oklch(0.68 0 0);
 
-  --sidebar: oklch(0.212 0.005 70);
-  --sidebar-foreground: oklch(0.965 0.003 84);
-  --sidebar-primary: oklch(0.965 0.003 84);
-  --sidebar-primary-foreground: oklch(0.185 0.005 70);
-  --sidebar-accent: oklch(0.292 0.007 70);
-  --sidebar-accent-foreground: oklch(0.975 0.003 84);
+  --sidebar: oklch(0.21 0 0);
+  --sidebar-foreground: oklch(0.96 0 0);
+  --sidebar-primary: oklch(0.96 0 0);
+  --sidebar-primary-foreground: oklch(0.18 0 0);
+  --sidebar-accent: oklch(0.29 0 0);
+  --sidebar-accent-foreground: oklch(0.97 0 0);
   --sidebar-border: oklch(1 0 0 / 12%);
-  --sidebar-ring: oklch(0.7 0.13 285);
+  --sidebar-ring: oklch(0.96 0 0);
 }
 
 @layer base {
@@ -194,6 +198,14 @@
    provides the outer structure. */
 .ruled > * + * {
   border-top: 1px solid var(--border);
+}
+
+/* Horizontal scroller without a visible bar — the mobile nav. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 /* Oversized typographic art, used where the reference puts a product photo. */

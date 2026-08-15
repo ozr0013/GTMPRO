@@ -48,7 +48,7 @@ export function CalibrationCharts({ series }: { series: CalibrationSeries }) {
       <div className="flex flex-wrap items-baseline gap-x-8 gap-y-3 border-b px-6 py-6 md:px-10">
         <div>
           <p className="eyebrow">Overall hit rate</p>
-          <p className="figure mt-1.5 text-[2.75rem] text-signal">
+          <p className="figure mt-1.5 text-[2.75rem]">
             {(series.overallHitRate * 100).toFixed(0)}%
           </p>
         </div>
@@ -82,9 +82,9 @@ export function CalibrationCharts({ series }: { series: CalibrationSeries }) {
               <Line
                 type="monotone"
                 dataKey="hitRate"
-                stroke="var(--signal)"
+                stroke="var(--foreground)"
                 strokeWidth={1.5}
-                dot={{ r: 2, fill: "var(--signal)", strokeWidth: 0 }}
+                dot={{ r: 2, fill: "var(--foreground)", strokeWidth: 0 }}
               />
             </LineChart>
           </ResponsiveContainer>
@@ -130,7 +130,12 @@ export function CalibrationCharts({ series }: { series: CalibrationSeries }) {
                 strokeDasharray="3 3"
               />
               <Tooltip cursor={{ strokeDasharray: "3 3" }} contentStyle={TOOLTIP} />
-              <Scatter name="hit" data={series.points.filter((p) => p.hit)} fill="var(--signal)" />
+              {/* hits are solid ink, misses hollow grey — value, not hue */}
+              <Scatter
+                name="hit"
+                data={series.points.filter((p) => p.hit)}
+                fill="var(--foreground)"
+              />
               <Scatter
                 name="miss"
                 data={series.points.filter((p) => !p.hit)}

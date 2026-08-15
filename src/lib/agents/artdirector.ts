@@ -243,11 +243,13 @@ export function restoreMissingHeroFiles(): { restored: number; skipped: number }
 
 // (media-type -> extension now lives in imageProvider, next to the fetch that needs it)
 
+// Grades of grey per archetype — the feed is a monochrome publication, so the
+// mock heroes are too. Distinctness comes from value, not hue.
 const MOCK_PALETTE: Record<Archetype, [string, string]> = {
-  education: ["#38bdf8", "#34d399"],
-  story: ["#a78bfa", "#fb7185"],
-  meme: ["#fbbf24", "#fb7185"],
-  product: ["#34d399", "#38bdf8"],
+  education: ["#e3e3e3", "#f6f6f6"],
+  story: ["#cfcfcf", "#ededed"],
+  meme: ["#b8b8b8", "#e2e2e2"],
+  product: ["#d9d9d9", "#f1f1f1"],
 };
 
 function escapeXml(value: string): string {

@@ -147,7 +147,7 @@ export function GenesisForm() {
       </button>
 
       {error && (
-        <p className="mt-4 border-l-2 border-destructive pl-3 text-[0.8rem] text-destructive">
+        <p className="mt-4 border-l-2 border-foreground pl-3 text-[0.8rem] font-medium">
           {error}
         </p>
       )}
@@ -158,7 +158,7 @@ export function GenesisForm() {
             <li key={label} className="flex items-baseline gap-3 py-2.5">
               <span
                 className={`font-mono text-[0.62rem] tabular-nums ${
-                  i <= step ? "text-signal" : "text-muted-foreground/40"
+                  i <= step ? "font-bold text-foreground" : "text-muted-foreground/40"
                 }`}
               >
                 {String(i + 1).padStart(2, "0")}
@@ -174,7 +174,7 @@ export function GenesisForm() {
               >
                 {label}
               </span>
-              {i < step && <span className="eyebrow ml-auto text-positive">done</span>}
+              {i < step && <span className="eyebrow ml-auto">done</span>}
               {i === step && pending && <span className="eyebrow ml-auto">running</span>}
             </li>
           ))}

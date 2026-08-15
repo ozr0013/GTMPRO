@@ -53,7 +53,7 @@ export default async function FeedPage() {
                     <span
                       className={
                         event.kind === "meeting_booked"
-                          ? "font-bold text-signal"
+                          ? "rounded bg-foreground px-1 font-bold text-background"
                           : "font-bold text-foreground"
                       }
                     >
@@ -77,7 +77,7 @@ export default async function FeedPage() {
           </div>
           <div className="mt-4 h-2 overflow-hidden rounded-full bg-muted">
             <div
-              className="h-full rounded-full bg-signal"
+              className="h-full rounded-full bg-foreground"
               style={{
                 width: `${imageBudget.total > 0 ? (imageBudget.used / imageBudget.total) * 100 : 0}%`,
               }}

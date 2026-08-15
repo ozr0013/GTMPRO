@@ -22,7 +22,7 @@ export function SectionHead({
         {href && cta && (
           <Link
             href={href}
-            className="text-[0.72rem] font-bold tracking-widest uppercase transition-colors hover:text-signal"
+            className="text-[0.72rem] font-bold tracking-widest uppercase transition-colors hover:text-muted-foreground"
           >
             {cta} →
           </Link>
