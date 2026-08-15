@@ -4,6 +4,7 @@ import {
   getActivePlaybook,
   getArmDistributions,
   getCalibrationSeries,
+  getGroundTruthReveal,
   getPlaybookHistory,
 } from "@/lib/db/queries";
 import { BrainView } from "../_components/brain-view";
@@ -30,6 +31,7 @@ export default async function BrainPage() {
         history={getPlaybookHistory(world.id)}
         arms={getArmDistributions(world.id)}
         calibration={getCalibrationSeries(world.id)}
+        reveal={getGroundTruthReveal(world.id)}
       />
     </div>
   );

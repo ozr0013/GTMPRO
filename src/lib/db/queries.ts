@@ -20,8 +20,8 @@ import {
   settings,
   worlds,
 } from "./schema";
-import type { Archetype, PostPayload, PredictedEffect, TimeSlot } from "@/lib/types";
-import { TIME_SLOTS } from "@/lib/types";
+import type { Archetype, PersonaHidden, PostPayload, PredictedEffect, TimeSlot, WorldConfig } from "@/lib/types";
+import { ARCHETYPES, TIME_SLOTS } from "@/lib/types";
 import { formatSimTime, TICKS_PER_DAY } from "@/lib/sim/time";
 import { postMetrics, type PostMetrics } from "@/lib/sim/metrics";
 import { and, desc, eq } from "drizzle-orm";
@@ -560,6 +560,163 @@ export function getCalibrationSeries(worldId: string): CalibrationSeries {
       perReportHits.length === 0
         ? 0
         : perReportHits.reduce((s, e) => s + e.rate, 0) / perReportHits.length,
+  };
+}
+
+// ── brain: ground-truth reveal ───────────────────────────────────────────────
+// The world's hidden config (affinity matrix, active hours, algo params) next to
+// what the agent learned (bandit posteriors, playbook rules). The agent never
+// reads this — it is the answer key the demo compares learning against.
+
+export interface RevealSegment {
+  name: string;
+  personaCount: number;
+  affinity: Record<Archetype, number>;
+}
+
+export interface RevealArm {
+  archetype: Archetype;
+  timeSlot: TimeSlot;
+  /** hidden-truth reach potential (audience-weighted affinity x slot activity), best arm = 1 */
+  trueScore: number;
+  isTrueBest: boolean;
+  /** learned Beta posterior mean (prior 0.5 when unplayed) */
+  learnedMean: number;
+  observations: number;
+  isChampion: boolean;
+}
+
+export interface GroundTruthReveal {
+  segments: RevealSegment[];
+  slotActivity: { slot: TimeSlot; share: number }[];
+  algo: {
+    earlyVelocityBoost: number;
+    overPostPenalty: number;
+    maxOrganicReachPostsPerDay: number;
+  };
+  arms: RevealArm[];
+  trueBest: { archetype: Archetype; timeSlot: TimeSlot };
+  champion: { archetype: Archetype; timeSlot: TimeSlot; observations: number } | null;
+  /** does the learned champion agree with the hidden truth? */
+  agreement: "match" | "partial" | "divergent" | "untested";
+  /** what the agent wrote down about content + timing, for side-by-side reading */
+  learnedRules: PlaybookRuleView[];
+}
+
+const SLOTS: TimeSlot[] = ["morning", "midday", "evening"];
+
+export function getGroundTruthReveal(worldId: string): GroundTruthReveal {
+  const world = db.select().from(worlds).where(eq(worlds.id, worldId)).get()!;
+  const config = world.config as WorldConfig;
+  const people = db.select().from(personas).where(eq(personas.worldId, worldId)).all();
+
+  // segment sizes from the actual persona table (genesis sizes are approximate)
+  const segmentCounts = new Map<string, number>();
+  for (const p of people) {
+    segmentCounts.set(p.segment, (segmentCounts.get(p.segment) ?? 0) + 1);
+  }
+  const segments: RevealSegment[] = Object.entries(config.affinity).map(([name, affinity]) => ({
+    name,
+    personaCount: segmentCounts.get(name) ?? 0,
+    affinity,
+  }));
+  const totalPersonas = people.length || 1;
+
+  // when the audience is actually online: persona-hour mass per slot, normalized
+  const slotHours = new Map<TimeSlot, Set<number>>(
+    SLOTS.map((s) => [s, new Set(TIME_SLOTS[s])]),
+  );
+  const slotMass = new Map<TimeSlot, number>(SLOTS.map((s) => [s, 0]));
+  for (const p of people) {
+    const hidden = p.hidden as PersonaHidden;
+    for (const hour of hidden.activeHours) {
+      for (const slot of SLOTS) {
+        if (slotHours.get(slot)!.has(hour)) slotMass.set(slot, slotMass.get(slot)! + 1);
+      }
+    }
+  }
+  const massTotal = SLOTS.reduce((s, slot) => s + slotMass.get(slot)!, 0) || 1;
+  const slotActivity = SLOTS.map((slot) => ({ slot, share: slotMass.get(slot)! / massTotal }));
+
+  // audience-size-weighted affinity per archetype
+  const weightedAffinity = new Map<Archetype, number>();
+  for (const archetype of ARCHETYPES) {
+    let sum = 0;
+    for (const seg of segments) {
+      sum += seg.personaCount * (seg.affinity[archetype] ?? 0);
+    }
+    weightedAffinity.set(archetype, sum / totalPersonas);
+  }
+
+  // hidden-truth score per arm, normalized so the best arm reads 1.00
+  const rawScores = new Map<string, number>();
+  for (const archetype of ARCHETYPES) {
+    for (const slot of SLOTS) {
+      rawScores.set(
+        `${archetype}/${slot}`,
+        weightedAffinity.get(archetype)! * (slotActivity.find((s) => s.slot === slot)?.share ?? 0),
+      );
+    }
+  }
+  const maxScore = Math.max(...rawScores.values()) || 1;
+
+  let trueBest: { archetype: Archetype; timeSlot: TimeSlot } = {
+    archetype: ARCHETYPES[0],
+    timeSlot: SLOTS[0],
+  };
+  let bestScore = -1;
+  for (const archetype of ARCHETYPES) {
+    for (const slot of SLOTS) {
+      const score = rawScores.get(`${archetype}/${slot}`)!;
+      if (score > bestScore) {
+        bestScore = score;
+        trueBest = { archetype, timeSlot: slot };
+      }
+    }
+  }
+
+  const armViews = getArmDistributions(worldId);
+  const championView = armViews.find((a) => a.isChampion) ?? null;
+
+  const arms: RevealArm[] = armViews.map((a) => ({
+    archetype: a.archetype,
+    timeSlot: a.timeSlot,
+    trueScore: (rawScores.get(`${a.archetype}/${a.timeSlot}`) ?? 0) / maxScore,
+    isTrueBest: a.archetype === trueBest.archetype && a.timeSlot === trueBest.timeSlot,
+    learnedMean: a.mean,
+    observations: a.observations,
+    isChampion: a.isChampion,
+  }));
+
+  const agreement: GroundTruthReveal["agreement"] = !championView
+    ? "untested"
+    : championView.archetype === trueBest.archetype && championView.timeSlot === trueBest.timeSlot
+      ? "match"
+      : championView.archetype === trueBest.archetype || championView.timeSlot === trueBest.timeSlot
+        ? "partial"
+        : "divergent";
+
+  return {
+    segments,
+    slotActivity,
+    algo: {
+      earlyVelocityBoost: config.algo.earlyVelocityBoost,
+      overPostPenalty: config.algo.overPostPenalty,
+      maxOrganicReachPostsPerDay: config.algo.maxOrganicReachPostsPerDay,
+    },
+    arms,
+    trueBest,
+    champion: championView
+      ? {
+          archetype: championView.archetype,
+          timeSlot: championView.timeSlot,
+          observations: championView.observations,
+        }
+      : null,
+    agreement,
+    learnedRules: getActivePlaybook(worldId).rules.filter(
+      (r) => r.category === "timing" || r.category === "content",
+    ),
   };
 }
 
