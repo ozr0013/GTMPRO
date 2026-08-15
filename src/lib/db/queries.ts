@@ -230,6 +230,8 @@ export interface ProposalView {
   ruleTexts: { ruleKey: string; text: string; category: string }[];
   banditArmId: string | null;
   armLabel: string | null;
+  /** where this candidate ranked in the pre-proposal dream (learned model); null = no signal yet */
+  dream: { rank: number; of: number; score: number } | null;
   predictedEffect: PredictedEffect;
   riskClass: "normal" | "sensitive";
   createdTick: number;
@@ -251,7 +253,11 @@ export function getPendingProposals(worldId: string): ProposalView[] {
   );
 
   return rows.map((p) => {
-    const evidence = p.evidence as { ruleIds?: string[]; banditArmId?: string };
+    const evidence = p.evidence as {
+      ruleIds?: string[];
+      banditArmId?: string;
+      dream?: { rank: number; of: number; score: number } | null;
+    };
     const payload = p.payload as PostPayload;
     const arm = evidence.banditArmId ? arms.get(evidence.banditArmId) : undefined;
     const ruleIds = evidence.ruleIds ?? [];
@@ -268,6 +274,7 @@ export function getPendingProposals(worldId: string): ProposalView[] {
         .map((r) => ({ ruleKey: r.ruleKey, text: r.text, category: r.category })),
       banditArmId: evidence.banditArmId ?? null,
       armLabel: arm ? `${arm.archetype} / ${arm.timeSlot}` : null,
+      dream: evidence.dream ?? null,
       predictedEffect: p.predictedEffect as PredictedEffect,
       riskClass: p.riskClass as "normal" | "sensitive",
       createdTick: p.createdTick,

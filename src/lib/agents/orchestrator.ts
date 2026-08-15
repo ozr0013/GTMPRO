@@ -30,6 +30,7 @@ import {
 } from "@/lib/contracts";
 import { getArmStats, type ArmStats } from "@/lib/learning/bandit";
 import { rollingHitRate, calibrationNote } from "@/lib/learning/calibration";
+import { dreamCandidates, dreamFor, renderDreamPreview, type DreamRanking } from "@/lib/learning/dreamer";
 import { checkGuardrails } from "@/lib/learning/guardrails";
 import { getActiveRules, rollbackTo } from "@/lib/learning/playbook";
 import { formatRulePerformance, getRulePerformance } from "@/lib/learning/ruleEvidence";
@@ -86,6 +87,7 @@ function renderContext(
   hitRate: number | null,
   pillars: string[],
   rulePerformance: string,
+  dreamPreview: string,
 ): string {
   const since = Math.max(0, tick - 24);
   const engs = db
@@ -127,6 +129,11 @@ function renderContext(
     "",
     "Bandit arms (cite banditArmId on post actions):",
     arms,
+    "",
+    // the sandbox dream: candidates ranked against the agent's LEARNED model
+    // (posterior means x observed engagement rates) — never the hidden config
+    "Dream preview — your learned model ranks these candidates (top 5):",
+    dreamPreview,
     "",
     `Last 24 ticks: impressions=${countKind(engs, "impression")} likes=${countKind(engs, "like")} comments=${countKind(engs, "comment")} clicks=${countKind(funnel, "link_click")} signups=${countKind(funnel, "signup")} dms=${countKind(funnel, "dm_started")} meetings=${countKind(funnel, "meeting_booked")}`,
     "",
@@ -207,6 +214,7 @@ async function processAction(
   world: { id: string; seed: string; simTick: number },
   action: StratAction,
   armStats: ArmStats[],
+  dream: DreamRanking,
 ): Promise<string | null> {
   const slot = (action.timeSlot ?? "morning") as TimeSlot;
   const scheduledTick = nextTickForSlot(world.simTick, slot);
@@ -337,6 +345,17 @@ async function processAction(
         ruleIds: action.evidenceRuleIds,
         banditArmId,
         signals: [action.angle],
+        // where this candidate ranked in the pre-proposal dream (learned model
+        // only — never the hidden config); null until anything has been scored
+        dream:
+          action.kind === "post"
+            ? dreamFor(
+                dream,
+                (action.archetype ?? "education") as Archetype,
+                (action.timeSlot ?? "morning") as TimeSlot,
+                action.topic,
+              )
+            : null,
       },
       predictedEffect: sanitizePrediction(action.predictedEffect),
       riskClass: action.riskClass,
@@ -380,6 +399,7 @@ export async function runHeartbeat(worldId: string): Promise<{ proposalIds: stri
   const armStats = getArmStats(worldId, rng);
   const hitRate = rollingHitRate(worldId);
   const pillars = (world.config as WorldConfig).topics;
+  const dream = dreamCandidates(worldId);
   const context = renderContext(
     worldId,
     tick,
@@ -388,6 +408,7 @@ export async function runHeartbeat(worldId: string): Promise<{ proposalIds: stri
     hitRate,
     pillars,
     formatRulePerformance(getRulePerformance(worldId)),
+    renderDreamPreview(dream),
   );
 
   const strat = await callAgent("strategist", StrategistOutput, SYSTEM.strategist, context, {
@@ -420,7 +441,7 @@ export async function runHeartbeat(worldId: string): Promise<{ proposalIds: stri
   });
 
   for (const action of strat.data.actions) {
-    const id = await processAction(world, groundTopic(worldId, tick, action, pillars, rng), armStats);
+    const id = await processAction(world, groundTopic(worldId, tick, action, pillars, rng), armStats, dream);
     if (id) proposalIds.push(id);
   }
 

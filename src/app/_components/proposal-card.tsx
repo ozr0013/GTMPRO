@@ -61,6 +61,14 @@ export function ProposalCard({ proposal, index }: { proposal: ProposalView; inde
             sensitive · approval required
           </span>
         )}
+        {proposal.dream && (
+          <span
+            className="rounded-full bg-signal/10 px-3 py-1 font-mono text-[0.68rem] font-bold tracking-wider text-signal uppercase"
+            title={`Ranked against the agent's learned model of the audience (score ${proposal.dream.score}) — never the hidden config`}
+          >
+            dreamed #{proposal.dream.rank} of {proposal.dream.of}
+          </span>
+        )}
         <span className="ml-auto font-mono text-[0.68rem] text-muted-foreground">
           proposed {proposal.createdLabel} → runs {proposal.scheduledLabel}
         </span>
