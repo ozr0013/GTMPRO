@@ -62,10 +62,32 @@ Suite at last update: **49 tests green across 16 files** (Track A sim + Track B 
   `docs/DEMO.md` now that DEMO.md exists.
 - Live image generation is **untested** — it needs real API keys. Only the mock path is verified.
 
+### Mission Control visual language
+
+`globals.css` is the whole design system — components read tokens, so restyling
+happens there, not in page files.
+
+- **Ground/ink:** bone paper (`--background`) and warm near-black (`--foreground`).
+  Never pure `#fff`/`#000`. A 2.5% SVG grain sits on `body::before`.
+- **One accent:** `--signal` (warm vermilion) marks the live sim clock, the champion
+  arm, cited rule keys, and the current playbook version. `--positive` / `--caution`
+  / `--destructive` are reserved for playbook diffs (added / amended / retired).
+- **Type:** Instrument Serif for display (`.display`, `.figure`), Instrument Sans for
+  body, IBM Plex Mono for every label and number. Numbers are always tabular.
+- **Primitives:** `.eyebrow` (tracked uppercase mono section marker), `.figure`
+  (large serif numeral), `.ruled` (hairline-separated rows), `.rise` (page-load
+  reveal). Use `<SectionHead>` for section headers so pages keep a shared rhythm.
+- **No cards, no shadows, radius ~2px.** Structure comes from hairline rules and
+  the grid. If something needs separating, rule it — don't float it.
+
 ## Shared-file change announcements (additive-only rule)
 
 - 2026-08-14: `src/lib/contracts.ts` + `GenesisOutput`; `src/lib/types.ts` + `AmbientAccount`, `WorldConfig.ambient?`; `src/lib/agents/models.ts` + `genesis` role (Track A / A1).
 - 2026-08-14: `posts.banditArmId` column existed from Phase 0 schema; no schema changes since first push.
+- 2026-08-14 (UI): `getArmDistributions` no longer crowns a champion among arms with
+  zero observations — every untried arm sits on the same prior mean, so the old
+  max-mean reduce showed an `n=0` arm as "champion" above one with real evidence.
+  Champion is now picked only from arms that have actually been played.
 - 2026-08-14 (C5): `agents/log.ts` actor union + `artdirector`. The `activity_log.actor` column
   is free text; `schema.ts`'s comment enumeration predates this agent and was left alone.
 - 2026-08-14 (C5, **behaviour fix in Track B's `communityRunner.ts`**): the clock calls

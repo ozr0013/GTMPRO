@@ -455,10 +455,18 @@ export function getArmDistributions(worldId: string): ArmView[] {
       db.select().from(banditObservations).where(eq(banditObservations.armId, arm.id)).all().length,
     );
   }
-  const best = arms.reduce(
-    (top, a) => (a.alpha / (a.alpha + a.beta) > top.score ? { id: a.id, score: a.alpha / (a.alpha + a.beta) } : top),
-    { id: "", score: -1 },
-  );
+  // Only an arm that has actually been played can be champion. Untried arms all
+  // sit on the same prior mean, so crowning one of those would show a "winner"
+  // with n=0 ranked above an arm that has real evidence behind it.
+  const best = arms
+    .filter((a) => (counts.get(a.id) ?? 0) > 0)
+    .reduce(
+      (top, a) =>
+        a.alpha / (a.alpha + a.beta) > top.score
+          ? { id: a.id, score: a.alpha / (a.alpha + a.beta) }
+          : top,
+      { id: "", score: -1 },
+    );
 
   return arms
     .map((a) => ({
