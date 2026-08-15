@@ -200,12 +200,44 @@ function mockFor(role: AgentRole, opts: { worldSeed: string; refId: string }, us
           changeSummary: "Mock: +1 voice rule from human edit (hashtags)",
         });
       }
+      // A rejection with a reason is the beat the product is judged on, so the
+      // mock has to exercise it too — otherwise the offline demo never shows a
+      // human turning the playbook.
+      const rejectionLike = /humanRejections_MUST_ADDRESS|humanSaid|rejectedCaption/i.test(user);
+      if (rejectionLike) {
+        const proposalId = /"proposalId"\s*:\s*"([^"]+)"/.exec(user)?.[1] ?? opts.refId;
+        return CoachOutput.parse({
+          playbookChanges: {
+            add: [
+              {
+                category: "voice",
+                text: "Lead with the insight, not the offer: no discounts or urgency in the first sentence.",
+                evidenceRefs: [proposalId],
+                sourceType: "rejection",
+              },
+            ],
+            amend: [],
+            retire: [],
+          },
+          changeSummary: "Mock: +1 voice rule from a human rejection",
+        });
+      }
+      // Distinct lessons per cycle. A single canned rule re-added every day is not
+      // learning — and the dedupe guard now correctly drops it, which would leave
+      // the offline demo stuck at one playbook version.
+      const lessons = [
+        { category: "timing", text: "Prefer morning slots for education posts; engagement peaks 7-9am." },
+        { category: "content", text: "Open with a concrete number; vague claims underperform." },
+        { category: "audience", text: "Cafe owners respond to product posts, not memes." },
+        { category: "voice", text: "One question per caption; stacked questions reduce replies." },
+      ];
+      const lesson = pick(rng, lessons);
       return CoachOutput.parse({
         playbookChanges: {
           add: [
             {
-              category: "timing",
-              text: `Mock learned rule ${opts.refId.slice(0, 6)}: prefer morning education posts.`,
+              category: lesson.category,
+              text: lesson.text,
               evidenceRefs: [opts.refId],
               sourceType: "outcome",
             },
@@ -213,7 +245,7 @@ function mockFor(role: AgentRole, opts: { worldSeed: string; refId: string }, us
           amend: [],
           retire: [],
         },
-        changeSummary: "Mock: +1 timing rule from outcomes",
+        changeSummary: `Mock: +1 ${lesson.category} rule from outcomes`,
       });
     }
     case "community":

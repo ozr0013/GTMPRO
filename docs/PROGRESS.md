@@ -114,6 +114,40 @@ it as though it meant something.
 Track B owners: the flagging thresholds in `underperformingRules` are a judgement call —
 tune freely, the derivation is the part worth keeping.
 
+### Human rejections were being silently dropped (fixed)
+
+Observed live on local models: a human rejected a proposal with "too salesly" and **neither
+v2 nor v3 mentioned tone at all** — the coach wrote about outcome metrics both times. The
+headline product claim (reject with a reason → playbook changes → next proposal differs)
+did not hold. Two causes:
+
+1. **Ordering.** The digest listed rejections *after* active rules and outcome reports, so a
+   small local model reliably wrote about metrics instead. Human feedback now leads the
+   digest under `humanRejections_MUST_ADDRESS`, carrying the rejected caption so the coach
+   can write a preventive rule, and the coach prompt makes addressing them a precondition.
+2. **The time window leaked.** `decidedTick >= latest.createdTick` re-digested a decision made
+   on the same tick as a version, while letting a decision age out unaddressed once a later
+   version landed. `learning/humanFeedback.ts` now tracks **addressed-ness** instead: a
+   rejection is outstanding until some rule cites its proposalId in `evidence.refs`. An
+   ignored rejection is re-raised next cycle rather than vanishing, and the coach logs a
+   `human_feedback` activity row saying how many it addressed vs ignored — so "is the coach
+   listening?" is now measurable rather than vibes.
+
+### Near-duplicate rules (fixed)
+
+The coach re-derives the same lesson from the same report each cycle. Live output had two
+rules both reading "Educational posts must use the 'Did you know?' format and include a clear
+CTA… 35%", and three of five rules citing one post. `learning/ruleDedupe.ts` drops additions
+that restate an existing rule (Jaccard over content words, threshold 0.6) and logs what it
+dropped rather than discarding silently.
+
+**Golden regenerated** (`playbookVersionCount` 5→2, `activeRuleCount` 7→4, everything else
+byte-identical). The old snapshot was recording three versions that each re-added the *same*
+canned mock rule — accretion recorded as if it were learning. The mock coach now returns
+varied lessons and, importantly, has a **rejection branch**, so the offline demo exercises the
+human-feedback beat: e2e-drive's "Too promotional" rejection now yields
+"Lead with the insight, not the offer: no discounts or urgency in the first sentence."
+
 ## Shared-file change announcements (additive-only rule)
 
 - 2026-08-14: `src/lib/contracts.ts` + `GenesisOutput`; `src/lib/types.ts` + `AmbientAccount`, `WorldConfig.ambient?`; `src/lib/agents/models.ts` + `genesis` role (Track A / A1).

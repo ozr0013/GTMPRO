@@ -8,6 +8,8 @@ import { CoachOutput } from "@/lib/contracts";
 import { createPlaybookVersion, getActiveRules, type PlaybookChanges } from "@/lib/learning/playbook";
 import { getRulePerformance, underperformingRules } from "@/lib/learning/ruleEvidence";
 import { applyMeasuredConfidence } from "@/lib/learning/ruleConfidence";
+import { addressedRejections, outstandingRejections } from "@/lib/learning/humanFeedback";
+import { dropDuplicateAdds } from "@/lib/learning/ruleDedupe";
 import { desc, eq } from "drizzle-orm";
 
 /** Unified word-level diff (`-removed` / `+added` / ` unchanged`). */
@@ -98,9 +100,10 @@ export async function runCoach(worldId: string, tick: number): Promise<{ version
     })
     .filter((e): e is NonNullable<typeof e> => e != null);
 
-  const rejections = decided
-    .filter((p) => p.status === "rejected")
-    .map((p) => ({ proposalId: p.id, reason: p.humanReason ?? "" }));
+  // Outstanding = no playbook rule cites this rejection yet, regardless of when it
+  // happened. A rejection the coach ignored is re-raised next cycle instead of
+  // ageing out of the time window unaddressed.
+  const rejections = outstandingRejections(worldId);
 
   if (reports.length === 0 && rejections.length === 0 && edits.length === 0) {
     logActivity({
@@ -121,6 +124,17 @@ export async function runCoach(worldId: string, tick: number): Promise<{ version
   const weak = underperformingRules(perf);
 
   const digest = {
+    // Human feedback leads the digest on purpose. When it trailed the outcome
+    // reports, small local models wrote about metrics and silently ignored the
+    // rejection — the exact beat the product is judged on.
+    humanRejections_MUST_ADDRESS: rejections.map((r) => ({
+      proposalId: r.proposalId,
+      humanSaid: r.reason,
+      rejectedCaption: r.rejectedCaption,
+      requirement:
+        "Add or amend a rule that would have prevented this draft, and put this proposalId in that rule's evidenceRefs.",
+    })),
+    humanEdits: edits,
     activeRules: getActiveRules(worldId).map((r) => {
       const p = perf.get(r.ruleKey);
       return {
@@ -152,8 +166,6 @@ export async function runCoach(worldId: string, tick: number): Promise<{ version
       actual: r.actual,
       predicted: r.predicted,
     })),
-    rejections,
-    edits,
   };
 
   const coach = await callAgent("coach", CoachOutput, SYSTEM.coach, JSON.stringify(digest, null, 2), {
@@ -173,7 +185,24 @@ export async function runCoach(worldId: string, tick: number): Promise<{ version
     return {};
   }
 
-  const changes: PlaybookChanges = coach.data.playbookChanges;
+  // The coach re-derives the same lesson from the same report on consecutive
+  // cycles; drop additions that restate a rule already in the playbook.
+  const activeTexts = getActiveRules(worldId).map((r) => r.text);
+  const deduped = dropDuplicateAdds(coach.data.playbookChanges.add, activeTexts);
+  const changes: PlaybookChanges = { ...coach.data.playbookChanges, add: deduped.kept };
+
+  if (deduped.dropped.length > 0) {
+    logActivity({
+      worldId,
+      tick,
+      actor: "coach",
+      action: "dedupe",
+      status: "ok",
+      summary: `Dropped ${deduped.dropped.length} rule(s) that restated an existing one`,
+      detail: deduped.dropped,
+    });
+  }
+
   const empty = changes.add.length === 0 && changes.amend.length === 0 && changes.retire.length === 0;
   if (empty) {
     logActivity({
@@ -190,6 +219,25 @@ export async function runCoach(worldId: string, tick: number): Promise<{ version
   const res = createPlaybookVersion(worldId, changes, "coach", tick, coach.data.changeSummary);
   // carried-forward rules keep their seeded confidence; re-derive it from measured outcomes
   const reconfidenced = applyMeasuredConfidence(worldId, res.versionId);
+
+  // Audit the beat the product is judged on. An ignored rejection stays
+  // outstanding and leads the next digest, so this surfaces rather than silently
+  // disappearing — and gives us a metric for whether the coach is listening.
+  const { addressed, ignored } = addressedRejections(worldId, rejections);
+  if (rejections.length > 0) {
+    logActivity({
+      worldId,
+      tick,
+      actor: "coach",
+      action: "human_feedback",
+      status: ignored.length === 0 ? "ok" : "blocked",
+      summary:
+        ignored.length === 0
+          ? `Turned ${addressed.length} human rejection(s) into playbook rules`
+          : `${ignored.length} of ${rejections.length} rejection(s) still unaddressed — will lead the next digest`,
+      detail: { addressed, ignored },
+    });
+  }
 
   logActivity({
     worldId,

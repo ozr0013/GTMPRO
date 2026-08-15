@@ -23,8 +23,8 @@
   "proposals": {
     "executed": 6
   },
-  "playbookVersionCount": 5,
-  "activeRuleCount": 7,
+  "playbookVersionCount": 2,
+  "activeRuleCount": 4,
   "outcomeReports": 4,
   "banditObservations": 4,
   "followers": 7
