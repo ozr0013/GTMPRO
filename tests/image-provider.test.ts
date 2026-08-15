@@ -84,8 +84,23 @@ describe("prompt is written for a diffusion model", () => {
     expect(prompt).not.toContain("cold-brew-ratios");
   });
 
-  it("suppresses text in-frame, which diffusion models otherwise hallucinate", () => {
-    expect(buildImagePrompt(post)).toContain("no text");
+  it("suppresses in-frame text without ever naming it", () => {
+    // This assertion used to read `toContain("no text")` — and that phrasing was
+    // the cause of the artefact, not the cure. CLIP has no negation operator, so
+    // "no text, no logo" simply puts *text* and *logo* in front of the model,
+    // which duly painted invented brand names onto every product shot. Even
+    // "blank label" failed: the noun matched, the adjective did not.
+    for (const archetype of ["education", "story", "meme", "product"]) {
+      const prompt = buildImagePrompt({ ...post, archetype });
+      expect(prompt).not.toMatch(/\bno (text|watermark|logo|words|letters)\b/i);
+      expect(prompt).not.toMatch(/\b(label|logo|watermark|signature|caption|lettering)\b/i);
+      expect(prompt).toMatch(/unmarked/i);
+    }
+  });
+
+  it("asks for a single centred subject on product shots", () => {
+    // at 512² this archetype otherwise composes a diptych of near-identical halves
+    expect(buildImagePrompt(post)).toMatch(/single centred subject/);
   });
 
   it("gives each archetype a distinct look so a feed is not four of the same photo", () => {

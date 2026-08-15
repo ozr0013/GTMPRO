@@ -79,6 +79,10 @@ def load_pipeline():
     return _pipe
 
 
+# Above roughly this, a distilled checkpoint goes contrasty and plastic.
+TURBO_CFG_MAX = float(os.environ.get("IMAGE_TURBO_CFG_MAX", "2.5"))
+
+
 def is_turbo() -> bool:
     """Turbo/Lightning models are distilled to run without guidance."""
     return any(tag in MODEL_ID.lower() for tag in ("turbo", "lightning", "lcm", "hyper"))
@@ -102,10 +106,21 @@ def generate(payload: dict) -> str:
     }
 
     if is_turbo():
-        # A distilled model with guidance on produces washed-out mush, and the
-        # negative prompt is meaningless without guidance — so both are dropped.
-        kwargs["guidance_scale"] = 0.0
         kwargs["num_inference_steps"] = max(1, min(steps, 4))
+        # A distilled model at full guidance produces washed-out mush, so the
+        # ceiling is low. But pinning it to 0 was too blunt: classifier-free
+        # guidance is what makes a negative prompt do anything, so guidance 0
+        # silently discarded our text/watermark suppressor and the model
+        # cheerfully painted invented brand names onto product shots.
+        #
+        # A caller asking for a modest cfg (>1) gets it, clamped to TURBO_CFG_MAX
+        # — enough for the negative prompt to bite, below where turbo degrades.
+        if cfg > 1.0:
+            kwargs["guidance_scale"] = min(cfg, TURBO_CFG_MAX)
+            if negative:
+                kwargs["negative_prompt"] = negative
+        else:
+            kwargs["guidance_scale"] = 0.0
     else:
         kwargs["guidance_scale"] = cfg
         if negative:

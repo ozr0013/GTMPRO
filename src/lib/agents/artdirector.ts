@@ -79,11 +79,34 @@ const ARCHETYPE_STYLE: Record<string, string> = {
   story:
     "candid documentary photograph, human hands in frame, warm golden-hour window light, lived-in setting, 35mm",
   meme: "bold graphic still life, single hero subject, punchy saturated colour, hard directional light, seamless colour backdrop",
+  // "single centred subject" earns its place: at 512² this archetype otherwise
+  // tends to compose a diptych — two half-frames of near-identical packaging.
   product:
-    "premium product photograph, three-quarter hero angle, soft box lighting with gentle reflections, matte surface, minimal props",
+    "premium product photograph, single centred subject, three-quarter hero angle, soft box lighting with gentle reflections, matte surface, minimal props",
 };
 
 const QUALITY = "sharp focus, high detail, professional colour grading, editorial photography, 4k";
+
+/**
+ * Keeps lettering out of frame — stated as what we want, never as "no text".
+ *
+ * CLIP does not encode negation. Ending the prompt with "no text, no watermark,
+ * no logo" puts the tokens *text*, *watermark* and *logo* in front of the model
+ * with no operator to cancel them, so it reliably paints exactly those: the
+ * product renders came back wearing garbled invented brand names.
+ *
+ * The negative prompt is not a way out here. A distilled Turbo/LCM checkpoint
+ * runs at guidance 0, and with no classifier-free guidance there is no second
+ * pass for the negative prompt to steer — the bundled server drops it outright.
+ * The bundled server now honours a modest guidance (>1) on Turbo checkpoints so
+ * the negative prompt runs again — but this stays the first line of defence,
+ * since a caller can still be at guidance 0.
+ *
+ * Note what is *absent*: no "label", no "logo", no "text", not even inside a
+ * phrase meant to forbid them. "blank label" put a garbled label on every
+ * bottle; the model matched the noun and ignored the adjective.
+ */
+const UNBRANDED = "plain unmarked matte surfaces, smooth clean finish";
 
 /** Art direction prompt: the copywriter's brief plus house style, no caption text in-frame. */
 export function buildImagePrompt(post: {
@@ -94,7 +117,7 @@ export function buildImagePrompt(post: {
   const subject = post.creativeBrief.replace(/\s+/g, " ").trim();
   const style = ARCHETYPE_STYLE[post.archetype] ?? ARCHETYPE_STYLE.education;
   const topic = post.topic.replace(/-/g, " ");
-  return [subject, topic, style, QUALITY, "no text, no watermark, no logo"].join(", ");
+  return [subject, topic, style, QUALITY, UNBRANDED].join(", ");
 }
 
 export async function generateHeroImage(postId: string): Promise<HeroImageResult> {
