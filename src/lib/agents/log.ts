@@ -1,5 +1,9 @@
 import { db } from "@/lib/db/client";
-import { activityLog } from "@/lib/db/schema";
+import { activityLog, worlds } from "@/lib/db/schema";
+import { formatSimTime } from "@/lib/sim/time";
+import { isSlackEnabled, sendSlack } from "@/lib/notify/slack";
+import { toNotifyEvent } from "@/lib/notify/activityNotifier";
+import { eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
 export type ActivityActor =
@@ -40,4 +44,35 @@ export function logActivity(entry: {
       createdAt: new Date(),
     })
     .run();
+
+  notifyIfWorthIt(entry);
+}
+
+/**
+ * Fire-and-forget Slack notification.
+ *
+ * Deliberately not awaited: logActivity is called inside the sim loop and from
+ * server actions, and a slow or down Slack must never stall a tick or leave an
+ * approval spinning in the UI. Errors are swallowed by sendSlack itself.
+ *
+ * Costs nothing when Slack is unconfigured — the guard runs before any work, so
+ * tests and the offline demo never touch the network.
+ */
+function notifyIfWorthIt(entry: {
+  worldId: string;
+  tick: number;
+  actor: string;
+  action: string;
+  status: string;
+  summary: string;
+}): void {
+  if (!isSlackEnabled()) return;
+  try {
+    const world = db.select().from(worlds).where(eq(worlds.id, entry.worldId)).get();
+    const event = toNotifyEvent(entry, world?.name ?? "Flywheel", formatSimTime(entry.tick));
+    if (!event) return;
+    void sendSlack(event);
+  } catch {
+    // notification must never surface as an application error
+  }
 }
