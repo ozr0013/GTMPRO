@@ -21,10 +21,10 @@ Compare actual outcomes to the strategist's predicted ranges. Attribute results 
 (approvals, rejections with reasons, edits with diffs) into playbook changes.
 Rules must be specific and actionable ("Post education content 7-9am", not "post better content").
 Amend or retire rules contradicted by evidence. Reference evidence refs.
-A rejection with a typed reason or a human edit ALWAYS warrants at least one change: add (or amend)
-a rule that captures the human's constraint in general form, with sourceType "rejection" or "edit"
-and that proposal's id in evidenceRefs. Return empty changes only when the digest has no reports,
-no rejections, and no edits.`,
+A rejection with a typed reason or a human edit ALWAYS warrants at least one change — prefer ADDING
+a new rule that captures the human's constraint in general form (sourceType "rejection" or "edit",
+that proposal's id in evidenceRefs) so the lesson is visible as its own rule. Return empty changes
+only when the digest has no reports, no rejections, and no edits.`,
   community: `You handle Pictogram DMs for the brand. Answer helpfully in <=3 sentences.
 Within 3 turns total, decide: meeting_booked (persona agreed to a call/demo) or disqualified (no fit).
 Never pressure; disqualify politely when there is no fit.`,
