@@ -131,10 +131,12 @@ export function sampleArm(worldId: string, rng: Rng);
   // returns the Thompson-sampled bandit_arms row among enabled arms
 export function recordReward(armId: string, postId: string, reward: number, tick: number): void;
   // updates alpha/beta and inserts a bandit_observations row
-export function computeReward(
-  actual: { impressions: number; likes: number; linkClicks: number; signups: number },
-  predicted: PredictedEffect,
-): number;  // 0..1, deeper funnel weighted higher
+export interface FunnelActual {
+  impressions: number; likes: number; linkClicks: number; signups: number;
+  dmsStarted?: number; meetings?: number;
+}
+export function computeReward(actual: FunnelActual): number;
+  // 0..1 absolute funnel value per impression. Predictions are calibration-only.
 ```
 
 ### Playbook — `src/lib/learning/playbook.ts` (Track B)
@@ -233,7 +235,7 @@ For each tick `t`, the clock (Task 5):
 2. Runs `runEngagementWave` for brand posts published in the last 24 ticks. Waves fire only at `publishedTick` and `publishedTick + 6` (two waves per post). The engine loads the world's hidden `WorldConfig` and persona hidden state, builds the reach set (followers + discovery sample), scores each persona with `scorePersonaPost` via per-entity `subRng` streams, and inserts `engagements` rows (impression, and like/comment/save/profile_visit above thresholds). Comments get placeholder text.
 3. Runs the funnel: each `profile_visit` at `t` makes seeded rolls against the persona's hidden `purchaseIntent`/`dmOpenness` — `link_click`, then `signup`, then DM initiation, writing `funnel_events` and creating `dm_threads` + persona `dm_messages`.
 4. Fills pending persona-voice comment texts via `callAgent("persona", ...)` in batch.
-5. At the day boundary (`t % 24 === 0`): the analyst evaluates each post whose 24-tick window closed — actual vs the strategist's `predictedEffect` — writing `outcome_reports` and calling `recordReward(computeReward(actual, predicted))` to update the post's bandit arm. Then the coach digests new reports plus decided proposals into `createPlaybookVersion` (skipped when there are no changes).
+5. At the day boundary (`t % 24 === 0`): the analyst evaluates each post whose 24-tick window closed — actual vs the strategist's `predictedEffect` for the calibration/verdict write-up — writing `outcome_reports` and calling `recordReward(computeReward(actual))` to update the post's bandit arm from absolute funnel value (clicks/signups/DMs/meetings per impression). Then the coach digests new reports plus decided proposals into `createPlaybookVersion` (skipped when there are no changes).
 6. At sim-morning (`t % 24 === 7`): fires `runHeartbeat`.
 7. Updates `worlds.simTick = t`.
 

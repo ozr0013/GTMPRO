@@ -6,16 +6,17 @@ Update this every working session. Definition of done: code + tests + a row here
 
 ## ⚠️ Right now — read this before starting anything
 
-Last updated: **2026-08-14, end of Omar's session.**
+Last updated: **2026-08-15, Minh — P0 learning-loop honesty.**
 
-**Suite: 80 tests green across 23 files.** `npm run verify` and `next build` both clean on `main`.
+**Suite: 90 tests green across 25 files.** `npm run verify` after this session.
 
 ### Claimed / do NOT duplicate
 
 | Area | Who | State |
 |---|---|---|
+| **P0 absolute reward + recovery ρ** | Minh — **done this session** | `computeReward` is absolute funnel value (includes DMs/meetings). Brain → Reveal shows Spearman's ρ. Do not revert to predicted-vs-actual reward. |
 | **B6 local models (Ollama)** | Omar — **done**, was marked todo for Minh | Fully working end-to-end. Do not re-do. Findings below. |
-| Rule-level attribution, coach/rejection fixes, rule dedupe | Omar | On `oz/agent-rule-attribution`, **not merged yet** |
+| Rule-level attribution, coach/rejection fixes, rule dedupe | Omar | Merged to `main` (commit 7ac884e) |
 | Mission Control UI (all of Track C, C1–C5) | Omar | Merged to `main` |
 
 ### Unmerged branches on origin
@@ -82,6 +83,7 @@ Track A complete.
 | B7 rule→outcome attribution | **done — by Omar** | `learning/ruleEvidence.ts` + `ruleConfidence.ts`. The playbook now learns from outcomes the way the bandit already did. On `oz/agent-rule-attribution`. |
 | B8 human rejections must change the playbook | **done — by Omar** | `learning/humanFeedback.ts`. Rejections led nowhere before; tracked by addressed-ness now, not by time window. Same branch. |
 | B9 rule dedupe / collapse | **done — by Omar** | `learning/ruleDedupe.ts`. Guards both additions and amendment-convergence. Same branch. |
+| B10 absolute reward + ground-truth ρ | **done — Minh, 2026-08-15** | `computeReward` is per-impression funnel value (meetings 10×); predictions stay calibration-only (D22). Reveal reports Spearman's ρ vs hidden config (D23). Tests: bandit.test.ts, ground-truth.test.ts. |
 
 ### B6 findings — local mode had never completed a loop
 

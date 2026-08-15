@@ -127,3 +127,15 @@ Append-only. New entries take the next number; never edit or delete an existing 
 - Context: The golden run exposed nondeterminism: mock-mode outputs derive their RNG from `callAgent` refIds, and two runners keyed refIds on row UUIDs.
 - Decision: Every RNG stream and every `callAgent` refId must be keyed on stable identifiers — persona handles, post stream keys, turn counts, ticks — never row UUIDs. Activity-log row references may still use UUIDs.
 - Consequence: Same seed ⇒ same simulation, byte for byte; `tests/golden.test.ts` enforces the rule permanently (regenerate deliberately with `UPDATE_GOLDEN=1`).
+
+## D22 — Absolute funnel reward, predictions are calibration-only
+
+- Context: `computeReward` scored "did this post beat the strategist's own predicted midpoint." The bandit therefore learned where the model under-forecast, not which content converted, and posteriors flattened toward 0.5 as calibration improved. Meetings — the headline metric — were not an input.
+- Decision: Reward is weighted funnel value per impression (likes 0.05, clicks 1, signups 3, DMs 3, meetings 10), clipped at a fixed saturation rate of 0.4. Predicted ranges stay on outcome reports for calibration and analyst verdicts only.
+- Consequence: A meeting always outranks a like; the same outcome always scores the same; `ruleEvidence` and the bandit now share an honest performance signal. Supersedes the D2 implication that predicted-vs-actual was the reward.
+
+## D23 — Ground-truth recovery is a number
+
+- Context: The reveal compared hidden config to learned posteriors by eyeballing two ranked lists and a top-1 "Match / Not yet" badge.
+- Decision: Each reveal dimension reports Spearman's rank correlation (ρ) between hidden truth scores and learned bandit means; the panel headline is the mean ρ across dimensions that produced a defined ranking. Null when there is no evidence or zero learned variance.
+- Consequence: The demo close is "the agent recovered the hidden ordering at ρ = …, having never seen it" rather than a visual comparison, and `tests/ground-truth.test.ts` guards the statistic.

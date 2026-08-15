@@ -7,6 +7,7 @@ import {
   getRulePerformance,
   underperformingRules,
 } from "@/lib/learning/ruleEvidence";
+import { computeReward } from "@/lib/learning/bandit";
 import { applyMeasuredConfidence } from "@/lib/learning/ruleConfidence";
 import { getActivePlaybook } from "@/lib/db/queries";
 import { eq } from "drizzle-orm";
@@ -53,9 +54,9 @@ function scoredPost(worldId: string, ruleIds: string[], hit: boolean, tick = 30)
       status: "published",
     })
     .run();
-  // above the predicted midpoint on every metric = reward 1; far below = reward 0
+  // absolute funnel value: a converting post scores high, a dead post scores 0
   const actual = hit
-    ? { impressions: 40, likes: 20, linkClicks: 10, signups: 5 }
+    ? { impressions: 40, likes: 20, linkClicks: 10, signups: 5, dmsStarted: 1, meetings: 1 }
     : { impressions: 0, likes: 0, linkClicks: 0, signups: 0 };
   db.insert(outcomeReports)
     .values({
@@ -79,10 +80,21 @@ describe("rule-level outcome attribution", () => {
     scoredPost(worldId, ["voice-1", "timing-1"], true);
     scoredPost(worldId, ["timing-1"], false);
 
+    const win = computeReward({
+      impressions: 40,
+      likes: 20,
+      linkClicks: 10,
+      signups: 5,
+      dmsStarted: 1,
+      meetings: 1,
+    });
+    const lose = computeReward({ impressions: 0, likes: 0, linkClicks: 0, signups: 0 });
+
     const perf = getRulePerformance(worldId);
-    expect(perf.get("voice-1")).toMatchObject({ citations: 1, meanReward: 1, exceeded: 1 });
-    // timing-1 rode one winner and one loser
-    expect(perf.get("timing-1")).toMatchObject({ citations: 2, meanReward: 0.5, exceeded: 1, missed: 1 });
+    expect(perf.get("voice-1")).toMatchObject({ citations: 1, exceeded: 1 });
+    expect(perf.get("voice-1")!.meanReward).toBeCloseTo(win);
+    expect(perf.get("timing-1")).toMatchObject({ citations: 2, exceeded: 1, missed: 1 });
+    expect(perf.get("timing-1")!.meanReward).toBeCloseTo((win + lose) / 2);
     expect(perf.has("content-1")).toBe(false); // never cited
   });
 

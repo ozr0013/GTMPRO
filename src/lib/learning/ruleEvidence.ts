@@ -11,8 +11,7 @@
 
 import { db } from "@/lib/db/client";
 import { outcomeReports, posts, proposals } from "@/lib/db/schema";
-import type { PredictedEffect } from "@/lib/types";
-import { computeReward } from "./bandit";
+import { computeReward, type FunnelActual } from "./bandit";
 import { eq } from "drizzle-orm";
 
 export interface RulePerformance {
@@ -26,14 +25,6 @@ export interface RulePerformance {
   meanReward: number;
   /** meanReward shrunk toward 0.5 by citation count — see confidenceFor */
   confidence: number;
-}
-
-/** Actual-metrics shape stored on an outcome report. */
-interface ActualMetrics {
-  impressions: number;
-  likes: number;
-  linkClicks: number;
-  signups: number;
 }
 
 /**
@@ -73,10 +64,7 @@ export function getRulePerformance(worldId: string): Map<string, RulePerformance
     const ruleIds = (proposal.evidence as { ruleIds?: string[] } | null)?.ruleIds ?? [];
     if (ruleIds.length === 0) continue;
 
-    const reward = computeReward(
-      report.actual as ActualMetrics,
-      report.predicted as PredictedEffect,
-    );
+    const reward = computeReward(report.actual as FunnelActual);
 
     for (const ruleKey of ruleIds) {
       const entry = acc.get(ruleKey) ?? { rewards: [], exceeded: 0, met: 0, missed: 0 };

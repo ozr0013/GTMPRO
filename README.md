@@ -52,11 +52,11 @@ flowchart LR
 
 ## Self-improvement = behavior change, not stored notes
 
-1. **Outcome learning** — the Analyst grades every post against the Strategist's predicted ranges; rewards update bandit posteriors (4 archetypes × 3 time slots) and become playbook rule proposals.
+1. **Outcome learning** — the Analyst scores each post's *absolute* funnel value (clicks, signups, DMs, meetings per impression). That reward updates Thompson-sampling bandits and becomes playbook rule evidence. Predicted ranges are scored separately for calibration, not for "did this work."
 2. **Human-feedback learning** — every rejection captures a reason; every inline edit is diffed and distilled into rules. The next proposal cites the new rules by ID.
 3. **Calibration** — predicted-vs-actual is tracked; the Strategist is told how over/under-confident it currently is and gets better at *predicting*, not just choosing.
 
-The playbook is full-copy versioned: human-editable, diffable, and revertible, with bandit posteriors snapshotted per version.
+The playbook is full-copy versioned: human-editable, diffable, and revertible, with bandit posteriors snapshotted per version. The Brain → Reveal tab reports Spearman's ρ between hidden ground truth and learned posteriors — a number, not a vibe.
 
 ## Permissions, guardrails, trust
 

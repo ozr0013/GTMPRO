@@ -43,7 +43,7 @@ Target runtime 4:50. Rehearse twice from a fresh seed before recording (Task F2)
 
 - Click: `/brain` > **Reveal** tab. Content archetype reads **Match** — truth favours Education, the agent ranks Education highest after 18 scored posts. Time slot reads **Not Yet**. Scroll to the hidden affinity matrix; each segment's true favourite is ringed.
 - Do not hide the "Not Yet". It got one dimension right and one wrong, and says so with the observation counts — that is what makes the Match believable rather than staged.
-- Say: "The world had a hidden config — cafe owners love product posts, mornings win. The agent never saw it. Compare what it learned."
+- Say: "The world had a hidden config — cafe owners love product posts, mornings win. The agent never saw it. Spearman's ρ is the recovery score: how close the learned ranking is to the truth."
 - Judge notices: learning is measured against ground truth, not self-graded by the same LLM — and the match is visible.
 
 ## 4:30 — Trust tour

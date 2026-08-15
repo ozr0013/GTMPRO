@@ -30,6 +30,12 @@ export interface RevealDimension {
   truthTop: string;
   learnedTop: string | null;
   agrees: boolean;
+  /**
+   * Spearman's rank correlation between hidden truth and learned scores.
+   * Null when there is no evidence yet, or when the learned ranking has no
+   * variance (every arm still on the same prior).
+   */
+  rho: number | null;
   /** total observations behind the learned side — low means "not enough evidence yet" */
   evidence: number;
 }
@@ -41,6 +47,11 @@ export interface GroundTruthReveal {
   /** best archetype per segment, straight from the hidden config */
   segmentBest: Record<string, Archetype>;
   dimensions: RevealDimension[];
+  /**
+   * Mean Spearman ρ across dimensions that produced a defined ranking.
+   * The number you can say out loud: "the agent recovered the hidden ordering."
+   */
+  recoveryRho: number | null;
   algo: WorldConfig["algo"];
   totalObservations: number;
 }
@@ -54,6 +65,53 @@ function rank(scores: Record<string, number>, observations?: Record<string, numb
       observations: observations?.[key],
     }))
     .sort((a, b) => b.score - a.score);
+}
+
+/** Average ranks for ties, 1-based. */
+function ranks(values: number[]): number[] {
+  const indexed = values.map((v, i) => ({ v, i })).sort((x, y) => x.v - y.v);
+  const out = Array<number>(values.length).fill(0);
+  let i = 0;
+  while (i < indexed.length) {
+    let j = i;
+    while (j + 1 < indexed.length && indexed[j + 1].v === indexed[i].v) j += 1;
+    const avg = (i + 1 + j + 1) / 2;
+    for (let k = i; k <= j; k++) out[indexed[k].i] = avg;
+    i = j + 1;
+  }
+  return out;
+}
+
+function pearson(x: number[], y: number[]): number | null {
+  const n = x.length;
+  if (n < 2) return null;
+  const mx = x.reduce((s, v) => s + v, 0) / n;
+  const my = y.reduce((s, v) => s + v, 0) / n;
+  let num = 0;
+  let dx = 0;
+  let dy = 0;
+  for (let i = 0; i < n; i++) {
+    const a = x[i] - mx;
+    const b = y[i] - my;
+    num += a * b;
+    dx += a * a;
+    dy += b * b;
+  }
+  if (dx === 0 || dy === 0) return null;
+  return num / Math.sqrt(dx * dy);
+}
+
+/** Spearman's ρ between two score maps that share keys. Null if ranking is undefined. */
+export function spearmanRho(
+  a: Record<string, number>,
+  b: Record<string, number>,
+): number | null {
+  const keys = Object.keys(a).filter((k) => k in b);
+  if (keys.length < 2) return null;
+  return pearson(
+    ranks(keys.map((k) => a[k])),
+    ranks(keys.map((k) => b[k])),
+  );
 }
 
 export function getGroundTruthReveal(worldId: string): GroundTruthReveal | null {
@@ -144,9 +202,18 @@ export function getGroundTruthReveal(worldId: string): GroundTruthReveal | null 
       truthTop: truth[0]?.key ?? "",
       learnedTop,
       agrees: learnedTop !== null && learnedTop === truth[0]?.key,
+      rho: evidence > 0 ? spearmanRho(truthScores, learnedScores) : null,
       evidence,
     };
   };
+
+  const dimensions = [
+    build("Content archetype", archetypeTruth, archetypeLearned, archetypeObs),
+    build("Time slot", slotTruth, slotLearned, slotObs),
+  ];
+  const rhos = dimensions.map((d) => d.rho).filter((r): r is number => r != null);
+  const recoveryRho =
+    rhos.length === 0 ? null : rhos.reduce((s, r) => s + r, 0) / rhos.length;
 
   return {
     affinity: config.affinity ?? {},
@@ -154,9 +221,7 @@ export function getGroundTruthReveal(worldId: string): GroundTruthReveal | null 
     segmentBest,
     algo: config.algo,
     totalObservations,
-    dimensions: [
-      build("Content archetype", archetypeTruth, archetypeLearned, archetypeObs),
-      build("Time slot", slotTruth, slotLearned, slotObs),
-    ],
+    recoveryRho,
+    dimensions,
   };
 }

@@ -175,8 +175,7 @@ function groundTopic(
  * Counts can't be negative and a range can't run backwards, but the contract only
  * types these as numbers — so a model is free to predict `impressions: [-10, 30]`
  * and pass validation. qwen3:14b does exactly that. Left alone it corrupts three
- * things downstream: the range renders as "-10–30" in approvals, `computeReward`
- * averages the bounds so a negative floor drags the bandit's reward, and
+ * things downstream: the range renders as "-10–30" in approvals, and
  * calibration counts a "hit" for any actual inside an impossibly wide band.
  *
  * Clamping beats rejecting here: the prediction is directionally fine and

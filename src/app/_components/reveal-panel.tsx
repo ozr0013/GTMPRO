@@ -5,6 +5,12 @@ import type { Archetype } from "@/lib/types";
 import { ARCHETYPES } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+function formatRho(rho: number | null): string {
+  if (rho === null) return "—";
+  const sign = rho > 0 ? "+" : "";
+  return `${sign}${rho.toFixed(2)}`;
+}
+
 /** Affinity 0..1 as ink density — the hidden matrix read at a glance. */
 function AffinityCell({ value, isBest }: { value: number; isBest: boolean }) {
   return (
@@ -73,6 +79,37 @@ export function RevealPanel({ reveal }: { reveal: GroundTruthReveal | null }) {
           signals — never the affinity matrix or any persona&apos;s internals. So this comparison
           measures learning against ground truth rather than letting the agent grade itself.
         </p>
+        <div className="mt-6">
+          {reveal.totalObservations === 0 || reveal.recoveryRho === null ? (
+            <>
+              <p className="figure text-[2.4rem] text-muted-foreground">ρ —</p>
+              <p className="mt-1 text-[0.82rem] text-muted-foreground">
+                Rank correlation needs scored posts. Advance the clock, then come back.
+              </p>
+            </>
+          ) : (
+            <>
+              <p
+                className={cn(
+                  "figure text-[2.8rem] tabular-nums",
+                  reveal.recoveryRho >= 0.5
+                    ? "text-positive"
+                    : reveal.recoveryRho >= 0
+                      ? "text-foreground"
+                      : "text-caution",
+                )}
+              >
+                ρ {formatRho(reveal.recoveryRho)}
+              </p>
+              <p className="mt-1 max-w-xl text-[0.85rem] leading-relaxed text-muted-foreground">
+                Spearman rank correlation between hidden truth and what the bandit believes
+                after {reveal.totalObservations} scored post
+                {reveal.totalObservations === 1 ? "" : "s"}. +1 is a perfect recovery of the
+                ordering the agent was never shown.
+              </p>
+            </>
+          )}
+        </div>
       </div>
 
       {/* verdicts first — this is the line the demo lands on */}
@@ -103,7 +140,14 @@ export function RevealPanel({ reveal }: { reveal: GroundTruthReveal | null }) {
                   Truth favours <span className="font-bold text-foreground capitalize">{d.truthTop}</span>
                   ; the agent ranks{" "}
                   <span className="font-bold text-foreground capitalize">{d.learnedTop}</span> highest
-                  after {d.evidence} scored post{d.evidence === 1 ? "" : "s"}.
+                  after {d.evidence} scored post{d.evidence === 1 ? "" : "s"}
+                  {d.rho !== null ? (
+                    <>
+                      {" "}
+                      · ρ {formatRho(d.rho)}
+                    </>
+                  ) : null}
+                  .
                 </p>
               </>
             )}

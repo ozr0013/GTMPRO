@@ -1,11 +1,12 @@
 import { db } from "@/lib/db/client";
-import { engagements, funnelEvents, outcomeReports, posts, proposals, worlds } from "@/lib/db/schema";
+import { outcomeReports, posts, proposals, worlds } from "@/lib/db/schema";
 import type { PredictedEffect } from "@/lib/types";
 import { callAgent } from "@/lib/agents/models";
 import { SYSTEM } from "@/lib/agents/prompts";
 import { logActivity } from "@/lib/agents/log";
 import { AnalystOutput } from "@/lib/contracts";
 import { computeReward, recordReward } from "@/lib/learning/bandit";
+import { postMetrics } from "@/lib/sim/metrics";
 import { postStreamKey } from "@/lib/sim/streams";
 import { and, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
@@ -18,18 +19,14 @@ const EMPTY_EFFECT: PredictedEffect = {
 };
 
 function tallyActual(postId: string, worldId: string) {
-  const engs = db.select().from(engagements).where(eq(engagements.postId, postId)).all();
-  const funnel = db
-    .select()
-    .from(funnelEvents)
-    .where(eq(funnelEvents.worldId, worldId))
-    .all()
-    .filter((e) => e.sourcePostId === postId);
+  const m = postMetrics(worldId, postId);
   return {
-    impressions: engs.filter((e) => e.kind === "impression").length,
-    likes: engs.filter((e) => e.kind === "like").length,
-    linkClicks: funnel.filter((e) => e.kind === "link_click").length,
-    signups: funnel.filter((e) => e.kind === "signup").length,
+    impressions: m.impressions,
+    likes: m.likes,
+    linkClicks: m.linkClicks,
+    signups: m.signups,
+    dmsStarted: m.dmsStarted,
+    meetings: m.meetings,
   };
 }
 
@@ -91,7 +88,7 @@ export async function runAnalyst(worldId: string, tick: number): Promise<{ repor
       .run();
 
     if (post.banditArmId) {
-      recordReward(post.banditArmId, post.id, computeReward(actual, predicted), tick);
+      recordReward(post.banditArmId, post.id, computeReward(actual), tick);
     }
 
     logActivity({

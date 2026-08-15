@@ -1,6 +1,5 @@
 import { db } from "@/lib/db/client";
 import { banditArms, banditObservations } from "@/lib/db/schema";
-import type { PredictedEffect } from "@/lib/types";
 import type { Rng } from "@/lib/rng";
 import { eq, and, desc } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
@@ -57,20 +56,50 @@ export function recordReward(armId: string, postId: string, reward: number, tick
   db.insert(banditObservations).values({ id: randomUUID(), armId, postId, reward, tick }).run();
 }
 
-/** Fraction of funnel metrics at/above predicted midpoint; weights deeper funnel higher. */
-export function computeReward(
-  actual: { impressions: number; likes: number; linkClicks: number; signups: number },
-  predicted: PredictedEffect,
-): number {
-  const mid = (r: [number, number]) => (r[0] + r[1]) / 2;
-  const hits = [
-    { w: 1, ok: actual.impressions >= mid(predicted.impressions) },
-    { w: 1, ok: actual.likes >= mid(predicted.likes) },
-    { w: 2, ok: actual.linkClicks >= mid(predicted.linkClicks) },
-    { w: 2, ok: actual.signups >= mid(predicted.signups) },
-  ];
-  const total = hits.reduce((s, h) => s + h.w, 0);
-  return hits.reduce((s, h) => s + (h.ok ? h.w : 0), 0) / total;
+/** Funnel counts the bandit and playbook score. Predictions are calibration-only. */
+export interface FunnelActual {
+  impressions: number;
+  likes: number;
+  linkClicks: number;
+  signups: number;
+  dmsStarted?: number;
+  meetings?: number;
+}
+
+/**
+ * Absolute GTM value of a post, 0..1. Deeper funnel stages weigh more; meetings
+ * are the headline. Per-impression so reach inflation cannot fake a win.
+ *
+ * Deliberately independent of the strategist's predicted ranges — those live in
+ * calibration. Scoring "did we beat our own forecast" taught the bandit where
+ * the model under-predicted, not which content worked, and flattened toward 0.5
+ * as calibration improved.
+ *
+ * Saturation is a fixed rate (not a rolling world baseline) so the same outcome
+ * always scores the same, a meeting always outranks a like, and tests stay
+ * deterministic.
+ */
+export const REWARD_WEIGHTS = {
+  likes: 0.05,
+  linkClicks: 1,
+  signups: 3,
+  dmsStarted: 3,
+  meetings: 10,
+} as const;
+
+/** Value-per-impression that maps to reward 1. A booked meeting on ~25 impressions saturates. */
+export const REWARD_SATURATION = 0.4;
+
+export function computeReward(actual: FunnelActual): number {
+  const value =
+    REWARD_WEIGHTS.likes * (actual.likes ?? 0) +
+    REWARD_WEIGHTS.linkClicks * (actual.linkClicks ?? 0) +
+    REWARD_WEIGHTS.signups * (actual.signups ?? 0) +
+    REWARD_WEIGHTS.dmsStarted * (actual.dmsStarted ?? 0) +
+    REWARD_WEIGHTS.meetings * (actual.meetings ?? 0);
+  if (value <= 0) return 0;
+  const denom = Math.max(actual.impressions, 1) * REWARD_SATURATION;
+  return Math.min(1, value / denom);
 }
 
 export interface ArmStats {

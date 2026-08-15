@@ -4,7 +4,6 @@ import { db } from "@/lib/db/client";
 import { banditArms } from "@/lib/db/schema";
 import { sampleArm, recordReward, computeReward } from "@/lib/learning/bandit";
 import { makeRng } from "@/lib/rng";
-import type { PredictedEffect } from "@/lib/types";
 import { eq, and } from "drizzle-orm";
 
 describe("thompson sampling bandit", () => {
@@ -33,14 +32,45 @@ describe("thompson sampling bandit", () => {
     expect(goodPicks).toBeGreaterThan(60);
   });
 
-  it("computeReward blends funnel metrics into 0..1", () => {
-    const predicted: PredictedEffect = {
-      impressions: [20, 40],
-      likes: [5, 10],
-      linkClicks: [1, 3],
-      signups: [0, 1],
-    };
-    expect(computeReward({ impressions: 45, likes: 12, linkClicks: 4, signups: 2 }, predicted)).toBe(1);
-    expect(computeReward({ impressions: 5, likes: 0, linkClicks: 0, signups: 0 }, predicted)).toBe(0);
+  it("computeReward scores absolute funnel value, not predicted ranges", () => {
+    const dead = computeReward({ impressions: 5, likes: 0, linkClicks: 0, signups: 0 });
+    const likesOnly = computeReward({ impressions: 40, likes: 20, linkClicks: 0, signups: 0 });
+    const clicks = computeReward({ impressions: 40, likes: 8, linkClicks: 4, signups: 0 });
+    const meeting = computeReward({
+      impressions: 40,
+      likes: 8,
+      linkClicks: 2,
+      signups: 1,
+      dmsStarted: 1,
+      meetings: 1,
+    });
+    const predictedDoesNotMatter = computeReward({
+      impressions: 40,
+      likes: 8,
+      linkClicks: 2,
+      signups: 1,
+      dmsStarted: 1,
+      meetings: 1,
+    });
+
+    expect(dead).toBe(0);
+    expect(likesOnly).toBeGreaterThan(0);
+    expect(clicks).toBeGreaterThan(likesOnly);
+    expect(meeting).toBeGreaterThan(clicks);
+    expect(meeting).toBeLessThanOrEqual(1);
+    expect(predictedDoesNotMatter).toBe(meeting);
+  });
+
+  it("computeReward saturates a meeting-heavy post at 1", () => {
+    expect(
+      computeReward({
+        impressions: 20,
+        likes: 10,
+        linkClicks: 4,
+        signups: 2,
+        dmsStarted: 1,
+        meetings: 1,
+      }),
+    ).toBe(1);
   });
 });
