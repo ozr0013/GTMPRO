@@ -6,37 +6,32 @@ Update this every working session. Definition of done: code + tests + a row here
 
 ## ⚠️ Right now — read this before starting anything
 
-Last updated: **2026-08-14, end of Omar's session.**
+Last updated: **2026-08-15 mid-morning, after the best-of-both team merge (Anurup).**
 
-**Suite: 80 tests green across 23 files.** `npm run verify` and `next build` both clean on `main`.
+**Suite: 103 tests green across 26 files.** `npm run verify` and `next build` both clean on `main`.
+Anurup's submission-day branch and Omar's overnight branch were built in parallel (neither knew) and
+merged best-of-both — details in the "Final push" section below. `oz/agent-rule-attribution` and all
+Track C branches are now merged; remote side branches are safe to delete.
 
 ### Claimed / do NOT duplicate
 
 | Area | Who | State |
 |---|---|---|
-| **B6 local models (Ollama)** | Omar — **done**, was marked todo for Minh | Fully working end-to-end. Do not re-do. Findings below. |
-| Rule-level attribution, coach/rejection fixes, rule dedupe | Omar | On `oz/agent-rule-attribution`, **not merged yet** |
-| Mission Control UI (all of Track C, C1–C5) | Omar | Merged to `main` |
+| **B6 local models (Ollama)** | Omar + Anurup — **done, validated twice independently** | Do not re-do. Findings below and in the B6 row. |
+| B7–B9 (rule attribution, human-feedback addressed-ness, dedupe) | Omar, merged | On `main`, with Anurup's mock closure + closure test merged in |
+| Mission Control UI (Track C) + Slack routing + `/settings` + merged Reveal tab | Omar (+ Anurup's spoiler gate/learned-rules) | Merged to `main` |
+| **Funnel zero-conversion fix** (`sim/funnel.ts`) | **Anurup — in progress today** | The headline-metric fix; claimed, do not duplicate |
+| Sandbox dreaming + calibration-earned autonomy + librarian consolidation | Anurup — in progress today | See the long-term learning plan |
 
-### Unmerged branches on origin
+### Known-open, unclaimed
 
-| Branch | Contains | Merge state |
-|---|---|---|
-| `oz/agent-rule-attribution` | rule attribution, human-feedback fix, rule dedupe, local-model fixes | **open — needs review/merge** |
-| `oz/c5-hero-images-v2`, `oz/ui-editorial`, `oz/ui-speedrun`, `oz/track-c-mission-control` | already merged into `main` | safe to delete |
-
-### Known-open, unclaimed — good things to pick up
-
-1. **Funnel doesn't convert.** A live local-model run produced 36 impressions and 19 likes but
-   **0 link clicks, 0 signups, 0 meetings**. Meetings is the headline bounty metric and it reads
-   zero. This is sim tuning in `sim/funnel.ts` (Track A), not agent logic.
-2. **`/analytics` funnel percentages assume strict nesting.** The ladder computes each stage as a
+1. **`/analytics` funnel percentages assume strict nesting.** The ladder computes each stage as a
    share of the one above, but Track A's funnel rolls clicks/signups/DMs as semi-independent draws
    off a profile visit — so "DMs 1 · 0.0%" can appear. Numbers honest, percentage misleading.
-3. **`prewarm-demo.ts` predates `docs/DEMO.md`** and runs its own three-cycle path. Should be
-   re-aligned with the actual demo script.
-4. **Live cloud image generation untested** — needs real API keys. Only mock/local paths verified.
-5. **`tests/community-dedupe.test.ts`** is a standalone file to avoid a merge seam; fold into
+2. **`prewarm-demo.ts` predates `docs/DEMO.md`**; `scripts/build-demo.ts` is the checklist-verified
+   snapshot builder now — consider retiring prewarm or folding them together.
+3. **Live cloud image generation untested** — needs real API keys the project deliberately has none of (D22).
+4. **`tests/community-dedupe.test.ts`** is a standalone file to avoid a merge seam; fold into
    `runners.test.ts` whenever convenient (Minh).
 
 ---
