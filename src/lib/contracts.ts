@@ -106,3 +106,37 @@ export const PersonaVoiceOutput = z.object({
   commentText: z.string().max(220),
 });
 export type PersonaVoiceOutputT = z.infer<typeof PersonaVoiceOutput>;
+
+// ── World genesis (Track A) — additive addition announced in docs/PROGRESS.md ──
+export const GenesisOutput = z.object({
+  brandName: z.string(),
+  segments: z
+    .array(
+      z.object({
+        name: z.string(),
+        size: z.number().int().min(4).max(40),
+        affinity: z.object({
+          education: z.number().min(0).max(1),
+          story: z.number().min(0).max(1),
+          meme: z.number().min(0).max(1),
+          product: z.number().min(0).max(1),
+        }),
+        interests: z.array(z.string()).min(1),
+      }),
+    )
+    .min(2)
+    .max(6),
+  topics: z.array(z.string()).min(3),
+  ambientAccounts: z.array(
+    z.object({ handle: z.string(), bio: z.string(), postingStyle: z.string() }),
+  ),
+  seedRules: z
+    .array(
+      z.object({
+        category: z.enum(["voice", "content", "timing", "audience", "guardrail"]),
+        text: z.string(),
+      }),
+    )
+    .min(2),
+});
+export type GenesisOutputT = z.infer<typeof GenesisOutput>;

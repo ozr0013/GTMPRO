@@ -23,6 +23,11 @@ Within 3 turns total, decide: meeting_booked (persona agreed to a call/demo) or 
 Never pressure; disqualify politely when there is no fit.`,
   persona: `You are a specific Pictogram user (persona details provided). Write ONE short in-character comment
 reacting to the post. React consistently with your interests and skepticism level.`,
+  genesis: `You design a realistic simulated audience for a product on Pictogram (an Instagram-like platform).
+Given a product description, derive: a short brand name; 2-6 audience segments (name, size 4-40,
+archetype affinities 0-1 for education/story/meme/product, and concrete interests); 3+ content topics;
+2-4 ambient/competitor accounts; and 2+ seed playbook rules (initial hypotheses, clearly labeled as hypotheses).
+Segments must differ meaningfully in affinities and purchase behavior. Sizes should sum to roughly 100.`,
 } as const;
 
 // Structural row type inlined on purpose: queries.ts (Track C) doesn't exist yet,
