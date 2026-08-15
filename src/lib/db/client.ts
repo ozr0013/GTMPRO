@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import * as schema from "./schema";
 
@@ -58,8 +59,41 @@ function ensureColumns(sqlite: Database.Database) {
   }
 }
 
+/**
+ * Where the SQLite file lives.
+ *
+ * Locally this is just DB_PATH (or ./flywheel.db). On a serverless host the
+ * deployment bundle is read-only, so opening ./flywheel.db yields an empty
+ * database that cannot be written — which presents as "no world yet", every
+ * route redirecting to /onboarding, and genesis silently failing.
+ *
+ * /tmp is the one writable location, so seed a copy there from the committed
+ * snapshot. State is per-instance and resets on a cold start; that is the right
+ * trade for a public demo — every visitor gets the fully-grown world, and their
+ * clicks work for the length of their session without touching anyone else's.
+ */
+function resolveDbPath(): string {
+  const configured = process.env.DB_PATH?.trim();
+  if (configured) return configured;
+  if (!process.env.VERCEL) return "./flywheel.db";
+
+  const runtime = path.join(os.tmpdir(), "flywheel.db");
+  if (!fs.existsSync(runtime)) {
+    const snapshot = path.join(process.cwd(), "demo-snapshot.db");
+    // Never let seeding take the app down at import time. A failure here is
+    // survivable: bootstrap() builds an empty schema instead and the visitor
+    // lands on genesis, which still works in mock mode.
+    try {
+      if (fs.existsSync(snapshot)) fs.copyFileSync(snapshot, runtime);
+    } catch (err) {
+      console.warn(`[flywheel] could not seed ${runtime} from the snapshot:`, err);
+    }
+  }
+  return runtime;
+}
+
 function create() {
-  const dbPath = process.env.DB_PATH ?? "./flywheel.db";
+  const dbPath = resolveDbPath();
   const sqlite = new Database(dbPath);
   if (dbPath !== ":memory:") sqlite.pragma("journal_mode = WAL");
   bootstrap(sqlite);
