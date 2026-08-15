@@ -60,6 +60,109 @@ function captionBlob(payload: PostPayload): string {
   return `${payload.caption} ${(payload.hashtags ?? []).join(" ")}`.trim();
 }
 
+/** Above this many active rules the librarian consolidation pass fires. */
+export const LIBRARIAN_MAX_RULES = 10;
+
+/**
+ * Librarian consolidation (runs inside the coach cycle): when the playbook grows
+ * past LIBRARIAN_MAX_RULES, a second model call merges overlapping rules into
+ * contextual ones (amend) and retires stale or absorbed ones. Mechanical dedupe
+ * (ruleDedupe.ts) catches near-identical text; this pass handles semantically
+ * overlapping-but-differently-worded rules, which need a reader, not Jaccard.
+ *
+ * Hard guard in code, not just prompt: rules with sourceType "rejection" are
+ * human constraints and are never auto-retired.
+ */
+export async function runLibrarianConsolidation(
+  worldId: string,
+  tick: number,
+): Promise<{ versionId?: string }> {
+  const world = db.select().from(worlds).where(eq(worlds.id, worldId)).get()!;
+  const rules = getActiveRules(worldId);
+  if (rules.length <= LIBRARIAN_MAX_RULES) return {};
+
+  const perf = getRulePerformance(worldId);
+  const digest = {
+    librarian_consolidation: true,
+    cap: LIBRARIAN_MAX_RULES,
+    activeRules: rules.map((r) => {
+      const p = perf.get(r.ruleKey);
+      return {
+        ruleKey: r.ruleKey,
+        category: r.category,
+        text: r.text,
+        sourceType: (r.evidence as { sourceType?: string })?.sourceType ?? "seed",
+        measured: p
+          ? { citations: p.citations, meanReward: Number(p.meanReward.toFixed(2)) }
+          : "never cited by a scored post",
+      };
+    }),
+  };
+
+  const librarian = await callAgent(
+    "coach",
+    CoachOutput,
+    SYSTEM.librarian,
+    JSON.stringify(digest, null, 2),
+    { worldSeed: world.seed, refId: `librarian-${tick}` },
+  );
+
+  if (!librarian.ok) {
+    logActivity({
+      worldId,
+      tick,
+      actor: "coach",
+      action: "consolidate",
+      status: "quarantined",
+      summary: librarian.error,
+    });
+    return {};
+  }
+
+  const rejectionKeys = new Set(
+    rules
+      .filter((r) => (r.evidence as { sourceType?: string })?.sourceType === "rejection")
+      .map((r) => r.ruleKey),
+  );
+  const changes: PlaybookChanges = {
+    add: [], // consolidation never grows the playbook
+    amend: librarian.data.playbookChanges.amend,
+    retire: librarian.data.playbookChanges.retire.filter((key) => !rejectionKeys.has(key)),
+  };
+
+  if (changes.amend.length === 0 && changes.retire.length === 0) {
+    logActivity({
+      worldId,
+      tick,
+      actor: "coach",
+      action: "consolidate",
+      status: "skipped",
+      summary: "librarian proposed no consolidation",
+    });
+    return {};
+  }
+
+  const res = createPlaybookVersion(
+    worldId,
+    changes,
+    "coach",
+    tick,
+    `consolidation: ${librarian.data.changeSummary}`,
+  );
+  logActivity({
+    worldId,
+    tick,
+    actor: "coach",
+    action: "consolidate",
+    status: "ok",
+    summary: `Consolidated the playbook: ~${changes.amend.length} merged, -${changes.retire.length} retired (${rules.length} → ${getActiveRules(worldId).length} rules)`,
+    refType: "playbook",
+    refId: res.versionId,
+    detail: { protectedRejectionRules: [...rejectionKeys] },
+  });
+  return { versionId: res.versionId };
+}
+
 /** Digest new reports + human decisions since the last playbook version. Track A clock calls this after runAnalyst. */
 export async function runCoach(worldId: string, tick: number): Promise<{ versionId?: string }> {
   const world = db.select().from(worlds).where(eq(worlds.id, worldId)).get()!;
@@ -309,5 +412,9 @@ export async function runCoach(worldId: string, tick: number): Promise<{ version
       })),
     },
   });
+
+  // the digest may have grown the playbook past its cap — consolidate if so
+  await runLibrarianConsolidation(worldId, tick);
+
   return { versionId: res.versionId };
 }

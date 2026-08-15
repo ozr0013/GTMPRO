@@ -219,12 +219,32 @@ function mockFor(role: AgentRole, opts: { worldSeed: string; refId: string }, us
         outcomeReports?: { verdict?: string }[];
         humanRejections_MUST_ADDRESS?: { proposalId: string; humanSaid: string }[];
         humanEdits?: { proposalId: string }[];
+        librarian_consolidation?: boolean;
+        cap?: number;
+        activeRules?: { ruleKey: string; category: string; text: string; sourceType: string }[];
       };
       let digest: Digest | null = null;
       try {
         digest = JSON.parse(user) as Digest;
       } catch {
         digest = null; // non-digest input (direct-call unit tests)
+      }
+      if (digest?.librarian_consolidation && digest.activeRules) {
+        // Deterministic consolidation: keep the 2 newest rules per category plus
+        // every human-rejection rule; retire the rest. Mirrors the live
+        // librarian's brief without an LLM.
+        const keepPerCategory = new Map<string, number>();
+        const retire: string[] = [];
+        for (const rule of [...digest.activeRules].reverse()) {
+          if (rule.sourceType === "rejection") continue; // human constraints survive
+          const kept = keepPerCategory.get(rule.category) ?? 0;
+          if (kept < 2) keepPerCategory.set(rule.category, kept + 1);
+          else retire.push(rule.ruleKey);
+        }
+        return CoachOutput.parse({
+          playbookChanges: { add: [], amend: [], retire },
+          changeSummary: `retired ${retire.length} overlapping rule${retire.length === 1 ? "" : "s"} (2 newest per category kept, human constraints untouched)`,
+        });
       }
       type Add = {
         category: "voice" | "content" | "timing" | "audience" | "guardrail";
