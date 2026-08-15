@@ -67,6 +67,11 @@ export function modelFor(role: AgentRole) {
     const local = createOpenAICompatible({
       name: "ollama",
       baseURL: process.env.LOCAL_BASE_URL ?? "http://localhost:11434/v1",
+      // Without this the provider silently drops the JSON schema ("responseFormat
+      // is not supported"), so the model free-forms and every generateObject call
+      // fails validation — genesis and the strategist die first. Ollama's
+      // OpenAI-compatible endpoint does support json_schema response formats.
+      supportsStructuredOutputs: true,
     });
     return local(localModelNameFor(role));
   }

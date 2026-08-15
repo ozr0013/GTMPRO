@@ -6,6 +6,8 @@ import { SYSTEM } from "@/lib/agents/prompts";
 import { logActivity } from "@/lib/agents/log";
 import { CoachOutput } from "@/lib/contracts";
 import { createPlaybookVersion, getActiveRules, type PlaybookChanges } from "@/lib/learning/playbook";
+import { getRulePerformance, underperformingRules } from "@/lib/learning/ruleEvidence";
+import { applyMeasuredConfidence } from "@/lib/learning/ruleConfidence";
 import { desc, eq } from "drizzle-orm";
 
 /** Unified word-level diff (`-removed` / `+added` / ` unchanged`). */
@@ -112,8 +114,36 @@ export async function runCoach(worldId: string, tick: number): Promise<{ version
     return {};
   }
 
+  // Rule-level attribution: which rules were cited by posts that hit or missed.
+  // Without this the coach has no grounds to amend or retire anything, so the
+  // playbook only ever grows.
+  const perf = getRulePerformance(worldId);
+  const weak = underperformingRules(perf);
+
   const digest = {
-    activeRules: getActiveRules(worldId).map((r) => ({ ruleKey: r.ruleKey, category: r.category, text: r.text })),
+    activeRules: getActiveRules(worldId).map((r) => {
+      const p = perf.get(r.ruleKey);
+      return {
+        ruleKey: r.ruleKey,
+        category: r.category,
+        text: r.text,
+        measured: p
+          ? {
+              citations: p.citations,
+              meanReward: Number(p.meanReward.toFixed(2)),
+              exceeded: p.exceeded,
+              met: p.met,
+              missed: p.missed,
+            }
+          : "never cited by a scored post",
+      };
+    }),
+    rulesContradictedByEvidence: weak.map((p) => ({
+      ruleKey: p.ruleKey,
+      meanReward: Number(p.meanReward.toFixed(2)),
+      citations: p.citations,
+      note: "cited repeatedly by posts that underperformed — amend or retire unless the reports explain it away",
+    })),
     outcomeReports: reports.map((r) => ({
       id: r.id,
       postId: r.postId,
@@ -158,6 +188,9 @@ export async function runCoach(worldId: string, tick: number): Promise<{ version
   }
 
   const res = createPlaybookVersion(worldId, changes, "coach", tick, coach.data.changeSummary);
+  // carried-forward rules keep their seeded confidence; re-derive it from measured outcomes
+  const reconfidenced = applyMeasuredConfidence(worldId, res.versionId);
+
   logActivity({
     worldId,
     tick,
@@ -167,6 +200,17 @@ export async function runCoach(worldId: string, tick: number): Promise<{ version
     summary: coach.data.changeSummary,
     refType: "playbook",
     refId: res.versionId,
+    detail: {
+      added: changes.add.length,
+      amended: changes.amend.length,
+      retired: changes.retire.length,
+      rulesReconfidenced: reconfidenced,
+      evidenceBase: [...perf.values()].map((p) => ({
+        ruleKey: p.ruleKey,
+        citations: p.citations,
+        meanReward: Number(p.meanReward.toFixed(2)),
+      })),
+    },
   });
   return { versionId: res.versionId };
 }

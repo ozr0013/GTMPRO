@@ -88,6 +88,32 @@ read tokens, so restyling happens there, not in page files.
 - Note: `<html>` must not carry `h-full` — pinning it to the viewport breaks the
   scroll container that the sticky masthead resolves against.
 
+### Rule-level outcome attribution (new — closes the playbook learning loop)
+
+The bandit learned from outcomes; the **playbook did not**. The coach received outcome
+reports and human decisions but nothing linking *which rules were cited by posts that
+hit or missed* — so despite a prompt saying "amend or retire rules contradicted by
+evidence", it had no evidence to act on. Consequences: the playbook only ever grew, and
+`playbook_rules.confidence` sat at its seeded value forever while the Brain view rendered
+it as though it meant something.
+
+- **`learning/ruleEvidence.ts`** derives per-rule performance with **no schema change** —
+  the links already exist as `outcome_reports.postId → posts.proposalId →
+  proposals.evidence.ruleIds`. Exposes citations, exceeded/met/missed, mean bandit reward,
+  and a confidence shrunk toward the 0.5 prior so one lucky post can't read as certainty.
+- **`learning/ruleConfidence.ts`** writes measured confidence onto each new version
+  (`createPlaybookVersion` copies confidence forward unchanged). Derived, not accumulated,
+  so it stays correct across rollbacks.
+- **Coach digest** now carries each rule's track record plus a `rulesContradictedByEvidence`
+  list (≥2 citations, mean reward < 0.4 — conservative on purpose).
+- **Strategist context** carries the same track record, so citations favour what has worked.
+- **Brain → Playbook** shows `confidence · n=N`, colour-coded, or "untested".
+- Tests: `tests/rule-evidence.test.ts` (attribution, shrinkage, conservative flagging,
+  confidence written through to the UI view).
+
+Track B owners: the flagging thresholds in `underperformingRules` are a judgement call —
+tune freely, the derivation is the part worth keeping.
+
 ## Shared-file change announcements (additive-only rule)
 
 - 2026-08-14: `src/lib/contracts.ts` + `GenesisOutput`; `src/lib/types.ts` + `AmbientAccount`, `WorldConfig.ambient?`; `src/lib/agents/models.ts` + `genesis` role (Track A / A1).

@@ -24,6 +24,7 @@ import type { Archetype, PostPayload, PredictedEffect, TimeSlot } from "@/lib/ty
 import { TIME_SLOTS } from "@/lib/types";
 import { formatSimTime, TICKS_PER_DAY } from "@/lib/sim/time";
 import { postMetrics, type PostMetrics } from "@/lib/sim/metrics";
+import { getRulePerformance, type RulePerformance } from "@/lib/learning/ruleEvidence";
 import { and, desc, eq } from "drizzle-orm";
 
 // ── world ────────────────────────────────────────────────────────────────────
@@ -313,6 +314,8 @@ export interface PlaybookRuleView {
   text: string;
   confidence: number;
   evidence: { sourceType: string; refs: string[] };
+  /** measured track record — absent until a scored post has cited this rule */
+  track: { citations: number; meanReward: number; exceeded: number; missed: number } | null;
 }
 
 export interface PlaybookView {
@@ -324,7 +327,11 @@ export interface PlaybookView {
   rules: PlaybookRuleView[];
 }
 
-function toRuleView(r: typeof playbookRules.$inferSelect): PlaybookRuleView {
+function toRuleView(
+  r: typeof playbookRules.$inferSelect,
+  perf?: Map<string, RulePerformance>,
+): PlaybookRuleView {
+  const measured = perf?.get(r.ruleKey);
   return {
     id: r.id,
     ruleKey: r.ruleKey,
@@ -332,6 +339,14 @@ function toRuleView(r: typeof playbookRules.$inferSelect): PlaybookRuleView {
     text: r.text,
     confidence: r.confidence,
     evidence: (r.evidence as PlaybookRuleView["evidence"]) ?? { sourceType: "seed", refs: [] },
+    track: measured
+      ? {
+          citations: measured.citations,
+          meanReward: measured.meanReward,
+          exceeded: measured.exceeded,
+          missed: measured.missed,
+        }
+      : null,
   };
 }
 
@@ -345,6 +360,7 @@ export function getActivePlaybook(worldId: string): PlaybookView {
   if (!version) {
     return { version: 0, versionId: "", changeSummary: "", authorType: "seed", createdTick: 0, rules: [] };
   }
+  const perf = getRulePerformance(worldId);
   return {
     version: version.version,
     versionId: version.id,
@@ -356,7 +372,7 @@ export function getActivePlaybook(worldId: string): PlaybookView {
       .from(playbookRules)
       .where(and(eq(playbookRules.worldId, worldId), eq(playbookRules.versionId, version.id)))
       .all()
-      .map(toRuleView),
+      .map((r) => toRuleView(r, perf)),
   };
 }
 
