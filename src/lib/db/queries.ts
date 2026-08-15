@@ -96,6 +96,9 @@ export interface WorldSettings {
   imageBudget: number;
   bannedTopics: string[];
   paused: boolean;
+  slackEnabled: boolean;
+  slackTarget: string;
+  slackNotify: string[] | null;
 }
 
 export function getSettings(worldId: string): WorldSettings | null {
@@ -109,6 +112,9 @@ export function getSettings(worldId: string): WorldSettings | null {
     imageBudget: row.imageBudget,
     bannedTopics: row.bannedTopics as string[],
     paused: row.paused,
+    slackEnabled: row.slackEnabled ?? false,
+    slackTarget: row.slackTarget ?? "",
+    slackNotify: (row.slackNotify as string[] | null) ?? null,
   };
 }
 

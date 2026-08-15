@@ -27,11 +27,42 @@ function bootstrap(sqlite: Database.Database) {
   }
 }
 
+/**
+ * Additive column migration.
+ *
+ * `bootstrap` only fires when the schema is absent entirely, so a column added to
+ * schema.ts after a DB exists would be missing everywhere that matters — the
+ * committed demo-snapshot.db and every teammate's local flywheel.db — and every
+ * select touching it would throw. SQLite has no `ADD COLUMN IF NOT EXISTS`, so
+ * check PRAGMA first. Idempotent, and cheap enough to run on every open.
+ *
+ * Additive only, by the same rule that governs schema.ts: never drop or retype
+ * here, or an older checkout will fail against a newer DB.
+ */
+const ADDED_COLUMNS: { table: string; column: string; ddl: string }[] = [
+  { table: "settings", column: "slack_target", ddl: "TEXT" },
+  { table: "settings", column: "slack_notify", ddl: "TEXT" },
+  { table: "settings", column: "slack_enabled", ddl: "INTEGER NOT NULL DEFAULT 0" },
+];
+
+function ensureColumns(sqlite: Database.Database) {
+  for (const { table, column, ddl } of ADDED_COLUMNS) {
+    const exists = sqlite
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?")
+      .get(table);
+    if (!exists) continue;
+    const columns = sqlite.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    if (columns.some((c) => c.name === column)) continue;
+    sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+  }
+}
+
 function create() {
   const dbPath = process.env.DB_PATH ?? "./flywheel.db";
   const sqlite = new Database(dbPath);
   if (dbPath !== ":memory:") sqlite.pragma("journal_mode = WAL");
   bootstrap(sqlite);
+  ensureColumns(sqlite);
   return drizzle(sqlite, { schema });
 }
 
