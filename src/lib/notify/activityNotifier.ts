@@ -15,17 +15,27 @@ export interface ActivityEntry {
   refId?: string | null;
 }
 
-const DEFAULT_KINDS: NotifyKind[] = ["approval", "published", "learned", "blocked", "meeting"];
+export const ALL_KINDS: NotifyKind[] = ["approval", "published", "learned", "blocked", "meeting"];
+const DEFAULT_KINDS = ALL_KINDS;
 
-/** SLACK_NOTIFY=approval,learned trims the firehose; unset means the default set. */
-export function enabledKinds(): Set<NotifyKind> {
+export function isNotifyKind(value: string): value is NotifyKind {
+  return (ALL_KINDS as string[]).includes(value);
+}
+
+/**
+ * Which kinds are on. Per-world UI settings win; SLACK_NOTIFY is the fallback for
+ * headless runs (scripts, CI) where there is no world to configure.
+ */
+export function enabledKinds(fromSettings?: string[] | null): Set<NotifyKind> {
+  if (fromSettings) return new Set(fromSettings.filter(isNotifyKind));
   const raw = process.env.SLACK_NOTIFY?.trim();
   if (!raw) return new Set(DEFAULT_KINDS);
-  const parsed = raw
-    .split(",")
-    .map((s) => s.trim().toLowerCase())
-    .filter((s): s is NotifyKind => (DEFAULT_KINDS as string[]).includes(s));
-  return new Set(parsed);
+  return new Set(
+    raw
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter(isNotifyKind),
+  );
 }
 
 /**
@@ -71,9 +81,10 @@ export function toNotifyEvent(
   entry: ActivityEntry,
   worldName: string,
   simLabel: string,
+  kinds?: string[] | null,
 ): NotifyEvent | null {
   const hit = classify(entry);
-  if (!hit || !enabledKinds().has(hit.kind)) return null;
+  if (!hit || !enabledKinds(kinds).has(hit.kind)) return null;
 
   return {
     kind: hit.kind,

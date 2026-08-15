@@ -30,17 +30,36 @@ const KIND_EMOJI: Record<NotifyKind, string> = {
   meeting: ":handshake:",
 };
 
-export function slackConfig() {
+/**
+ * Credentials come from env, never the database: this repo commits
+ * demo-snapshot.db, so a token stored in `settings` would be pushed to GitHub.
+ * The routing target is not a secret and is overridable per world from the UI.
+ */
+export function slackConfig(targetOverride?: string | null) {
   const token = process.env.SLACK_BOT_TOKEN?.trim();
-  const target = process.env.SLACK_DM_TARGET?.trim();
+  const target = (targetOverride?.trim() || process.env.SLACK_DM_TARGET?.trim()) ?? undefined;
   const webhook = process.env.SLACK_WEBHOOK_URL?.trim();
   const baseUrl = (process.env.APP_BASE_URL ?? "http://localhost:3000").replace(/\/$/, "");
   return { token, target, webhook, baseUrl };
 }
 
-export function isSlackEnabled(): boolean {
-  const { token, target, webhook } = slackConfig();
+/** True when a message could actually be delivered. */
+export function isSlackEnabled(targetOverride?: string | null): boolean {
+  const { token, target, webhook } = slackConfig(targetOverride);
   return Boolean(webhook) || Boolean(token && target);
+}
+
+/** What the settings UI needs to explain the current state to a human. */
+export function slackReadiness(targetOverride?: string | null) {
+  const { token, target, webhook } = slackConfig(targetOverride);
+  return {
+    hasToken: Boolean(token),
+    hasWebhook: Boolean(webhook),
+    hasTarget: Boolean(target),
+    /** DMs need token+target; a webhook alone posts to its fixed channel */
+    deliverable: Boolean(webhook) || Boolean(token && target),
+    transport: token && target ? ("dm" as const) : webhook ? ("webhook" as const) : null,
+  };
 }
 
 /** Block Kit payload. Exported so it can be asserted without touching the network. */
@@ -128,9 +147,12 @@ async function resolveTarget(token: string, target: string): Promise<string> {
  * Send, or quietly do nothing when Slack is not configured. Never throws and never
  * blocks the caller's critical path — returns why it skipped/failed for logging.
  */
-export async function sendSlack(event: NotifyEvent): Promise<{ sent: boolean; reason?: string }> {
-  const { token, target, webhook, baseUrl } = slackConfig();
-  if (!isSlackEnabled()) return { sent: false, reason: "not configured" };
+export async function sendSlack(
+  event: NotifyEvent,
+  targetOverride?: string | null,
+): Promise<{ sent: boolean; reason?: string }> {
+  const { token, target, webhook, baseUrl } = slackConfig(targetOverride);
+  if (!isSlackEnabled(targetOverride)) return { sent: false, reason: "not configured" };
 
   const message = buildSlackMessage(event, baseUrl);
 

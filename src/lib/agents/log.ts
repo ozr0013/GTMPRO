@@ -1,5 +1,5 @@
 import { db } from "@/lib/db/client";
-import { activityLog, worlds } from "@/lib/db/schema";
+import { activityLog, settings, worlds } from "@/lib/db/schema";
 import { formatSimTime } from "@/lib/sim/time";
 import { isSlackEnabled, sendSlack } from "@/lib/notify/slack";
 import { toNotifyEvent } from "@/lib/notify/activityNotifier";
@@ -66,12 +66,24 @@ function notifyIfWorthIt(entry: {
   status: string;
   summary: string;
 }): void {
-  if (!isSlackEnabled()) return;
   try {
+    const config = db.select().from(settings).where(eq(settings.worldId, entry.worldId)).get();
+    // the UI switch is authoritative — an operator turning it off must silence the
+    // world even when the env credentials are still present
+    if (config && !config.slackEnabled) return;
+
+    const target = config?.slackTarget ?? null;
+    if (!isSlackEnabled(target)) return;
+
     const world = db.select().from(worlds).where(eq(worlds.id, entry.worldId)).get();
-    const event = toNotifyEvent(entry, world?.name ?? "Flywheel", formatSimTime(entry.tick));
+    const event = toNotifyEvent(
+      entry,
+      world?.name ?? "Flywheel",
+      formatSimTime(entry.tick),
+      (config?.slackNotify as string[] | null) ?? null,
+    );
     if (!event) return;
-    void sendSlack(event);
+    void sendSlack(event, target);
   } catch {
     // notification must never surface as an application error
   }

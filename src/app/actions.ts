@@ -14,6 +14,7 @@ import { decideProposal, runHeartbeat } from "@/lib/agents/orchestrator";
 import { generateHeroImage } from "@/lib/agents/artdirector";
 import { logActivity } from "@/lib/agents/log";
 import { rollbackTo } from "@/lib/learning/playbook";
+import { sendSlack } from "@/lib/notify/slack";
 import { getWorld } from "@/lib/db/queries";
 import type { PostPayload } from "@/lib/types";
 import { eq } from "drizzle-orm";
@@ -101,6 +102,51 @@ export async function generateHeroImageAction(
   const result = await generateHeroImage(postId);
   refreshAll();
   return { ok: result.ok, reason: result.reason };
+}
+
+export async function saveSlackSettingsAction(
+  worldId: string,
+  input: { enabled: boolean; target: string; kinds: string[] },
+): Promise<void> {
+  db.update(settings)
+    .set({
+      slackEnabled: input.enabled,
+      slackTarget: input.target.trim() || null,
+      slackNotify: input.kinds,
+    })
+    .where(eq(settings.worldId, worldId))
+    .run();
+  logActivity({
+    worldId,
+    tick: getWorld(worldId)?.simTick ?? 0,
+    actor: "human",
+    action: "slack_settings",
+    status: "ok",
+    summary: input.enabled
+      ? `Slack notifications on → ${input.target.trim() || "(env default)"}`
+      : "Slack notifications off",
+    detail: { kinds: input.kinds },
+  });
+  refreshAll();
+}
+
+/** Send a test message using the saved target, so the UI can prove delivery. */
+export async function testSlackAction(
+  worldId: string,
+): Promise<{ sent: boolean; reason?: string }> {
+  const config = db.select().from(settings).where(eq(settings.worldId, worldId)).get();
+  const world = getWorld(worldId);
+  return sendSlack(
+    {
+      kind: "approval",
+      worldName: world?.name ?? "Flywheel",
+      title: "Test from Flywheel",
+      body: "If you can read this on your phone, approvals will reach you here.",
+      fields: { Agent: "human", Action: "test", "Sim time": world?.simLabel ?? "—" },
+      path: "/approvals",
+    },
+    config?.slackTarget ?? null,
+  );
 }
 
 export async function selectWorldAction(worldId: string): Promise<void> {

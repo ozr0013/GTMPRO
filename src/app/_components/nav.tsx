@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/brain", label: "Brain" },
   { href: "/analytics", label: "Analytics" },
   { href: "/activity", label: "Activity" },
+  { href: "/settings", label: "Settings" },
 ] as const;
 
 /** Inline nav in the masthead: bold, tracked, uppercase — no icons, no chrome. */
