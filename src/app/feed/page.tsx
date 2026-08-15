@@ -90,7 +90,8 @@ export default async function FeedPage() {
             local render, so the demo runs with no API keys.
           </p>
           <p className="mt-3 text-[0.78rem] leading-relaxed text-muted-foreground">
-            Double-tap a card to like it. Counts animate whenever you advance the clock.
+            Counts are audience outcomes from the sim — they animate whenever you advance the
+            clock.
           </p>
         </section>
       </aside>

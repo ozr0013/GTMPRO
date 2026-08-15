@@ -79,8 +79,6 @@ function PostCard({
   imageBudgetRemaining: number;
 }) {
   const [showComments, setShowComments] = useState(false);
-  const [liked, setLiked] = useState(false);
-  const [burst, setBurst] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
   const [generating, startGenerating] = useTransition();
   const router = useRouter();
@@ -92,13 +90,6 @@ function PostCard({
       setImageError(result.ok ? null : (result.reason ?? "generation failed"));
       router.refresh();
     });
-
-  // double-tap is the platform-native gesture; a click on the art counts as one tap
-  const handleDoubleClick = () => {
-    setLiked(true);
-    setBurst(true);
-    window.setTimeout(() => setBurst(false), 650);
-  };
 
   // Ambient handles are stored with their "@" (sim/ambient.ts writes account.handle),
   // brand handles are a bare slug. Strip it so the single "@" below is not doubled
@@ -133,9 +124,8 @@ function PostCard({
       {/* the art director's hero once generated; until then the creative brief
           stands in for the image it describes */}
       <div
-        onDoubleClick={handleDoubleClick}
         className={cn(
-          "relative flex aspect-square cursor-pointer select-none items-center justify-center overflow-hidden border-y text-center",
+          "relative flex aspect-square items-center justify-center overflow-hidden border-y text-center",
           !post.imageUrl && `bg-gradient-to-br px-8 ${ARCHETYPE_WASH[post.archetype]}`,
         )}
       >
@@ -151,9 +141,6 @@ function PostCard({
               {post.creativeBrief}
             </p>
           </>
-        )}
-        {burst && (
-          <HeartIcon className="pointer-events-none absolute size-24 animate-ping fill-white text-white/90" />
         )}
       </div>
 
@@ -173,17 +160,13 @@ function PostCard({
         </div>
       )}
 
+      {/* metrics are simulated audience outcomes; the operator is not a persona,
+          so nothing here fakes engagement — likes and saves read, comments toggle */}
       <div className="flex items-center gap-5 px-4 pt-3">
-        <button
-          type="button"
-          onClick={() => setLiked((v) => !v)}
-          className="flex items-center gap-1.5 font-mono text-[0.72rem] tabular-nums"
-          aria-pressed={liked}
-          aria-label="Like"
-        >
-          <HeartIcon className={cn("size-3.5", liked && "fill-signal text-signal")} />
-          <CountUp value={post.metrics.likes + (liked ? 1 : 0)} />
-        </button>
+        <span className="flex items-center gap-1.5 font-mono text-[0.72rem] text-muted-foreground tabular-nums">
+          <HeartIcon className="size-3.5" />
+          <CountUp value={post.metrics.likes} />
+        </span>
         <button
           type="button"
           onClick={() => setShowComments((v) => !v)}

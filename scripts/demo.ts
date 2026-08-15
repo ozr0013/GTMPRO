@@ -28,6 +28,15 @@ for (const suffix of ["", "-wal", "-shm"]) rmSync(`${RUNTIME}${suffix}`, { force
 copyFileSync(SNAPSHOT, RUNTIME);
 
 console.log("demo-run.db reset from demo-snapshot.db");
+
+// public/generated is gitignored, so a clean checkout is missing the hero files
+// the snapshot references. Mock heroes are seeded, so they restore byte-identical.
+// DB_PATH must be set before the import — the db client opens it at module load.
+process.env.DB_PATH = RUNTIME;
+const { restoreMissingHeroFiles } = await import("../src/lib/agents/artdirector");
+const { restored } = restoreMissingHeroFiles();
+if (restored > 0) console.log(`restored ${restored} missing hero image(s) from their seeds`);
+
 console.log("mock mode · http://localhost:3000 · Ctrl+C to stop\n");
 
 const child = spawn("npm", ["run", "dev"], {
