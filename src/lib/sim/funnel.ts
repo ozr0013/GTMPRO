@@ -30,7 +30,15 @@ export async function runFunnel(worldId: string, tick: number): Promise<void> {
     const hidden = persona.hidden as PersonaHidden;
     const rng = subRng(world.seed, "funnel", persona.handle, tick);
 
-    if (rng() >= 0.6 * hidden.purchaseIntent) continue; // no link click, funnel ends here
+    // Tuning (2026-08-15): the original constants multiplied purchase intent at
+    // every stage (click 0.6·PI, then signup 0.3·PI), compounding to ~3.6% signup
+    // per profile visit — with the engine emitting ~5-15 visits/day, a whole demo
+    // arc rounded to ZERO signups and meetings (observed on two live runs; the
+    // headline bounty metric read zero). A profile visit already expresses intent,
+    // so downstream stages use intent as a differentiator, not a squared gate:
+    // high-intent personas stay ~2-3x likelier than low-intent at every stage,
+    // and a 3-day arc now lands a handful of signups and ~1 booked meeting.
+    if (rng() >= 0.35 + 0.5 * hidden.purchaseIntent) continue; // no link click, funnel ends here
     db.insert(funnelEvents)
       .values({
         id: randomUUID(),
@@ -42,7 +50,7 @@ export async function runFunnel(worldId: string, tick: number): Promise<void> {
       })
       .run();
 
-    if (rng() < 0.3 * hidden.purchaseIntent) {
+    if (rng() < 0.15 + 0.45 * hidden.purchaseIntent) {
       db.insert(funnelEvents)
         .values({
           id: randomUUID(),
@@ -55,7 +63,7 @@ export async function runFunnel(worldId: string, tick: number): Promise<void> {
         .run();
     }
 
-    if (rng() < 0.4 * hidden.dmOpenness * hidden.purchaseIntent) {
+    if (rng() < 0.25 * hidden.dmOpenness + 0.35 * hidden.purchaseIntent) {
       const openThread = db
         .select()
         .from(dmThreads)

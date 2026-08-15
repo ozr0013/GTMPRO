@@ -12,16 +12,18 @@
     "save": 37
   },
   "funnel": {
-    "dm_started": 1,
-    "link_click": 3,
-    "meeting_booked": 1
+    "dm_started": 3,
+    "link_click": 9,
+    "meeting_booked": 2,
+    "signup": 2
   },
   "dmThreads": {
-    "qualified": 1
+    "closed": 1,
+    "qualified": 2
   },
-  "dmMessages": 2,
+  "dmMessages": 8,
   "proposals": {
-    "executed": 6
+    "executed": 9
   },
   "playbookVersionCount": 4,
   "activeRuleCount": 6,
