@@ -1,14 +1,15 @@
 // Hero images for brand posts (Task C5).
 //
-// Live mode calls the image model; mock mode renders a deterministic local SVG so
-// the constraint "MODEL_MODE=mock runs the complete loop with zero network calls"
-// still holds and the demo works offline.
+// Mock mode AND the local provider render a deterministic seeded SVG (zero
+// network, zero keys — D22); only the opt-in cloud provider calls a real image
+// model, since Ollama has no image generation.
 
 import { db } from "@/lib/db/client";
 import { posts, settings, worlds } from "@/lib/db/schema";
 import type { Archetype } from "@/lib/types";
 import { subRng } from "@/lib/rng";
 import { postStreamKey } from "@/lib/sim/streams";
+import { isLocalProvider } from "./models";
 import { logActivity } from "./log";
 import { eq, and, isNotNull } from "drizzle-orm";
 import fs from "node:fs";
@@ -100,7 +101,9 @@ export async function generateHeroImage(postId: string): Promise<HeroImageResult
   let bytes: Uint8Array;
 
   try {
-    if ((process.env.MODEL_MODE ?? "mock") === "mock") {
+    if ((process.env.MODEL_MODE ?? "mock") === "mock" || isLocalProvider()) {
+      // Local live mode has no image model (Ollama is text-only here), so it
+      // shares the seeded-SVG path — the hero button works in every mode.
       filename = `${postId}.svg`;
       bytes = new TextEncoder().encode(
         // keyed on the post's stable stream key, not its UUID, so the same seeded
@@ -222,6 +225,6 @@ function mockHeroSvg(archetype: Archetype, brief: string, worldSeed: string, str
   <g font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="52" font-weight="600" fill="rgba(23,23,23,0.82)" text-anchor="middle">
 ${lines.map((line, i) => `    <text x="512" y="${startY + i * 58}">${escapeXml(line)}</text>`).join("\n")}
   </g>
-  <text x="512" y="964" font-family="system-ui, sans-serif" font-size="26" fill="rgba(23,23,23,0.45)" text-anchor="middle">${escapeXml(archetype)} · mock hero</text>
+  <text x="512" y="964" font-family="system-ui, sans-serif" font-size="26" fill="rgba(23,23,23,0.45)" text-anchor="middle">${escapeXml(archetype)} · studio card</text>
 </svg>`;
 }
