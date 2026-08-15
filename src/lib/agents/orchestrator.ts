@@ -258,7 +258,31 @@ async function processAction(
       scheduledTick,
     };
   } else if (action.kind === "dm_reply") {
-    payload = { threadId: action.threadId ?? "", text: action.angle };
+    // Small live models occasionally invent DM actions with no matching open
+    // thread. Publishing one silently no-ops after approval (the publisher
+    // skips unknown threads) — an approvable card that does nothing. Drop it
+    // at proposal time and say so in the trail.
+    const threadId = action.threadId ?? "";
+    const thread = threadId
+      ? db
+          .select()
+          .from(dmThreads)
+          .where(and(eq(dmThreads.id, threadId), eq(dmThreads.worldId, world.id)))
+          .get()
+      : undefined;
+    if (!thread || thread.status !== "open") {
+      logActivity({
+        worldId: world.id,
+        tick: world.simTick,
+        actor: "strategist",
+        action: "propose",
+        status: "blocked",
+        summary: `dm_reply dropped: no open thread matches "${threadId || "(none)"}"`,
+        detail: { threadId, kind: action.kind },
+      });
+      return null;
+    }
+    payload = { threadId, text: action.angle };
   } else {
     payload = {
       postId: "",

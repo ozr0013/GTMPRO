@@ -51,6 +51,50 @@ describe("heartbeat gates (mocked callAgent)", () => {
     expect(log.some((l) => l.actor === "critic" && l.status === "blocked")).toBe(true);
   });
 
+  it("drops a hallucinated dm_reply that names no open thread", async () => {
+    const actual = await vi.importActual<typeof import("@/lib/agents/models")>("@/lib/agents/models");
+    const { StrategistOutput } = await import("@/lib/contracts");
+    mocks.callAgent.mockImplementation(async (role, schema, system, user, opts) => {
+      if (role === "strategist") {
+        return {
+          ok: true as const,
+          data: StrategistOutput.parse({
+            actions: [
+              {
+                kind: "dm_reply",
+                topic: "brewing-science",
+                angle: "Hey — want a quick call about the concentrate?",
+                threadId: "no-such-thread",
+                reasoning: "Hallucinated first-touch DM (live small-model failure mode).",
+                evidenceRuleIds: ["timing-1"],
+                predictedEffect: {
+                  impressions: [0, 0],
+                  likes: [0, 0],
+                  linkClicks: [0, 0],
+                  signups: [0, 0],
+                },
+                riskClass: "sensitive",
+              },
+            ],
+            strategyNote: "Forced hallucinated DM for tests.",
+          }),
+        };
+      }
+      return actual.callAgent(role, schema, system, user, opts);
+    });
+
+    const { worldId } = buildTinyWorld("hb-dm-hallucination");
+    const { proposalIds } = await runHeartbeat(worldId);
+    expect(proposalIds).toEqual([]);
+    expect(db.select().from(proposals).where(eq(proposals.worldId, worldId)).all()).toHaveLength(0);
+    const log = db.select().from(activityLog).where(eq(activityLog.worldId, worldId)).all();
+    expect(
+      log.some(
+        (l) => l.actor === "strategist" && l.status === "blocked" && /no open thread/.test(l.summary),
+      ),
+    ).toBe(true);
+  });
+
   it("strategist failure writes a quarantined proposal and never throws", async () => {
     mocks.callAgent.mockImplementation(async (role, schema, system, user, opts) => {
       if (role === "strategist") return { ok: false as const, error: "structured output failed" };
