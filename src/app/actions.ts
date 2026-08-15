@@ -1,50 +1,114 @@
 "use server";
 
+// Thin wrappers only — no business logic lives here. Every mutation delegates to
+// src/lib and then revalidates, so pages re-read through queries.ts.
+
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
+import { WORLD_COOKIE } from "./current-world";
 import { db } from "@/lib/db/client";
-import { proposals, settings } from "@/lib/db/schema";
-import type { PostPayload } from "@/lib/types";
-import { runHeartbeat, decideProposal } from "@/lib/agents/orchestrator";
+import { settings } from "@/lib/db/schema";
 import { advanceTicks } from "@/lib/sim/clock";
+import { generateWorld } from "@/lib/sim/genesis";
+import { decideProposal, runHeartbeat, type Decision } from "@/lib/agents/orchestrator";
+import { logActivity } from "@/lib/agents/log";
+import { rollbackTo } from "@/lib/learning/playbook";
+import { getWorld } from "@/lib/db/queries";
 import { eq } from "drizzle-orm";
+
+function refreshAll() {
+  revalidatePath("/", "layout");
+}
 
 export async function advanceTicksAction(worldId: string, n: number): Promise<void> {
   await advanceTicks(worldId, n);
-  revalidatePath("/", "layout");
+  refreshAll();
 }
 
 export async function heartbeatAction(worldId: string): Promise<void> {
   await runHeartbeat(worldId);
-  revalidatePath("/", "layout");
+  refreshAll();
 }
 
 export async function decideAction(
   proposalId: string,
-  decision: "approve" | "reject" | "edit",
+  decision: Decision,
   reason?: string,
   editedCaption?: string,
 ): Promise<void> {
-  if (decision === "edit") {
-    const proposal = db.select().from(proposals).where(eq(proposals.id, proposalId)).get();
-    const payload = (proposal?.payload ?? {}) as PostPayload;
-    await decideProposal(proposalId, "edit", {
-      editedPayload: { ...payload, caption: editedCaption ?? payload.caption },
-    });
-  } else {
-    await decideProposal(proposalId, decision, { reason });
-  }
-  revalidatePath("/", "layout");
+  decideProposal(proposalId, decision, reason, editedCaption);
+  refreshAll();
 }
 
 export async function togglePauseAction(worldId: string): Promise<void> {
   const current = db.select().from(settings).where(eq(settings.worldId, worldId)).get();
-  if (current) {
-    db.update(settings).set({ paused: !current.paused }).where(eq(settings.worldId, worldId)).run();
-  }
-  revalidatePath("/", "layout");
+  if (!current) return;
+  db.update(settings).set({ paused: !current.paused }).where(eq(settings.worldId, worldId)).run();
+  logActivity({
+    worldId,
+    tick: getWorld(worldId)?.simTick ?? 0,
+    actor: "human",
+    action: current.paused ? "resume" : "pause",
+    status: "ok",
+    summary: current.paused ? "Agent resumed" : "Agent paused (kill switch)",
+  });
+  refreshAll();
 }
 
 export async function setModeAction(worldId: string, mode: "propose" | "autopilot"): Promise<void> {
   db.update(settings).set({ mode }).where(eq(settings.worldId, worldId)).run();
-  revalidatePath("/", "layout");
+  logActivity({
+    worldId,
+    tick: getWorld(worldId)?.simTick ?? 0,
+    actor: "human",
+    action: "set_mode",
+    status: "ok",
+    summary: `Autonomy set to ${mode}`,
+  });
+  refreshAll();
+}
+
+export async function rollbackAction(worldId: string, targetVersion: number): Promise<void> {
+  const tick = getWorld(worldId)?.simTick ?? 0;
+  rollbackTo(worldId, targetVersion, tick);
+  logActivity({
+    worldId,
+    tick,
+    actor: "human",
+    action: "rollback",
+    status: "ok",
+    summary: `Rolled the playbook back to v${targetVersion}`,
+    refType: "playbook_version",
+    refId: String(targetVersion),
+  });
+  refreshAll();
+}
+
+export async function selectWorldAction(worldId: string): Promise<void> {
+  (await cookies()).set(WORLD_COOKIE, worldId, { httpOnly: true, sameSite: "lax", path: "/" });
+  refreshAll();
+}
+
+export interface GenesisResult {
+  worldId: string;
+  name: string;
+  segments: string[];
+  topics: string[];
+  personaCount: number;
+}
+
+export async function createWorldAction(
+  name: string,
+  productDescription: string,
+): Promise<GenesisResult> {
+  const { worldId, segments, topics } = generateWorld({ name, productDescription });
+  (await cookies()).set(WORLD_COOKIE, worldId, { httpOnly: true, sameSite: "lax", path: "/" });
+  refreshAll();
+  return {
+    worldId,
+    name,
+    segments,
+    topics,
+    personaCount: getWorld(worldId)?.personaCount ?? 0,
+  };
 }

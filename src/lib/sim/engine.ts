@@ -2,6 +2,7 @@ import { db } from "@/lib/db/client";
 import { engagements, personas, posts, worlds } from "@/lib/db/schema";
 import type { Archetype, PersonaHidden, WorldConfig } from "@/lib/types";
 import { subRng } from "@/lib/rng";
+import { postStreamKey } from "./streams";
 import { and, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
@@ -56,13 +57,14 @@ export function runEngagementWave(worldId: string, postId: string, tick: number)
     config.algo.discoveryFloor,
     Math.floor(nonFollowers.length * config.algo.discoveryRate),
   );
-  // rng streams are keyed on stable identifiers (world seed, post id, persona
-  // handle) — never row UUIDs — so identical seeds yield identical outcomes.
+  // rng streams are keyed on stable identifiers (world seed, post content/slot,
+  // persona handle) — never row UUIDs — so identical seeds yield identical outcomes.
+  const streamKey = postStreamKey(post);
   const ranked = nonFollowers
     .map((p) => {
       const h = p.hidden as PersonaHidden;
       const w = h.interests.includes(post.topic) ? 1 : 0.2;
-      return { p, key: w * subRng(world.seed, "disc", postId, p.handle)() };
+      return { p, key: w * subRng(world.seed, "disc", streamKey, p.handle)() };
     })
     .sort((a, b) => b.key - a.key)
     .slice(0, Math.min(sampleSize, nonFollowers.length))
@@ -73,7 +75,7 @@ export function runEngagementWave(worldId: string, postId: string, tick: number)
 
   for (const persona of reachSet) {
     const hidden = persona.hidden as PersonaHidden;
-    const rng = subRng(world.seed, "eng", postId, persona.handle);
+    const rng = subRng(world.seed, "eng", streamKey, persona.handle);
     const score = scorePersonaPost(
       hidden,
       persona.segment,

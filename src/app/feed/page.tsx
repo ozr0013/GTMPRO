@@ -1,61 +1,69 @@
-import { getWorld, getFeed } from "@/lib/db/queries";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { redirect } from "next/navigation";
+import { getCurrentWorld } from "../current-world";
+import { getFeed, getFunnelEvents } from "@/lib/db/queries";
+import { PhoneFeed } from "../_components/phone-feed";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 
-export default function FeedPage() {
-  const world = getWorld();
-  if (!world) {
-    return <p className="text-sm text-muted-foreground">Seed a world to see the feed.</p>;
-  }
-  const feed = getFeed(world.id);
+export const dynamic = "force-dynamic";
+
+const EVENT_LABEL: Record<string, string> = {
+  link_click: "clicked the link",
+  signup: "signed up",
+  dm_started: "opened a DM",
+  meeting_booked: "booked a meeting",
+  disqualified: "was disqualified",
+};
+
+export default async function FeedPage() {
+  const world = await getCurrentWorld();
+  if (!world) redirect("/onboarding");
+
+  const posts = getFeed(world.id);
+  const events = getFunnelEvents(world.id, 20);
 
   return (
-    <div className="mx-auto flex max-w-xl flex-col gap-4">
-      <h1 className="text-lg font-semibold">Pictogram feed</h1>
-      {feed.length === 0 && (
-        <p className="text-sm text-muted-foreground">
-          Nothing published yet — run a heartbeat, approve a proposal, then advance the clock.
-        </p>
-      )}
-      {feed.map((post) => (
-        <Card key={post.id}>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Badge>{post.archetype}</Badge>
-              <span className="text-xs text-muted-foreground">{post.topic}</span>
-              <span className="ml-auto font-mono text-xs text-muted-foreground">
-                tick {post.publishedTick}
-              </span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <div className="flex aspect-video items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500/50 via-purple-500/40 to-rose-500/50 p-6">
-              <p className="text-center text-sm italic text-foreground/80">{post.creativeBrief}</p>
-            </div>
-            <p className="text-sm leading-relaxed">{post.caption}</p>
-            {post.hashtags.length > 0 && (
-              <p className="text-xs text-primary/80">{post.hashtags.join(" ")}</p>
-            )}
-            <p className="text-xs text-muted-foreground">
-              {post.likeCount} likes · {post.commentCount} comments
+    <div className="grid gap-6 p-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div>
+        <PhoneFeed posts={posts} brandName={world.name} followers={world.followers} />
+      </div>
+
+      <aside className="space-y-4">
+        <Card className="gap-3 p-4">
+          <h2 className="font-heading text-sm font-medium">What the posts caused</h2>
+          {events.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No funnel events yet. Publish a post and advance the clock.
             </p>
-            {post.comments.length > 0 && (
-              <>
-                <Separator />
-                <div className="flex flex-col gap-1.5">
-                  {post.comments.map((comment, i) => (
-                    <p key={`${post.id}-${i}`} className="text-xs">
-                      <span className="font-medium text-muted-foreground">@{comment.handle}</span>{" "}
-                      {comment.text}
-                    </p>
-                  ))}
-                </div>
-              </>
-            )}
-          </CardContent>
+          ) : (
+            <ul className="space-y-2 text-xs">
+              {events.map((event) => (
+                <li key={event.id} className="flex items-start gap-2">
+                  <Badge
+                    variant={event.kind === "meeting_booked" ? "default" : "outline"}
+                    className="mt-0.5 shrink-0 text-[10px]"
+                  >
+                    {event.label}
+                  </Badge>
+                  <span className="text-muted-foreground">
+                    <span className="font-medium text-foreground">@{event.handle}</span>{" "}
+                    {EVENT_LABEL[event.kind] ?? event.kind}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </Card>
-      ))}
+
+        <Card className="gap-2 p-4 text-xs text-muted-foreground">
+          <h2 className="font-heading text-sm font-medium text-foreground">Reading the feed</h2>
+          <p>
+            Art is a placeholder rendering of each post&apos;s creative brief — the art director
+            (Task C5) swaps in generated hero images.
+          </p>
+          <p>Double-tap a card to like it. Counts animate whenever you advance the sim clock.</p>
+        </Card>
+      </aside>
     </div>
   );
 }

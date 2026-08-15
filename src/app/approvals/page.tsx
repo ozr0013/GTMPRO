@@ -1,123 +1,37 @@
-import { getWorld, getPendingProposals } from "@/lib/db/queries";
-import { decideAction } from "@/app/actions";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Separator } from "@/components/ui/separator";
+import { redirect } from "next/navigation";
+import { getCurrentWorld } from "../current-world";
+import { getPendingProposals } from "@/lib/db/queries";
+import { ProposalCard } from "../_components/proposal-card";
+import { Card } from "@/components/ui/card";
 
-async function approveAction(proposalId: string): Promise<void> {
-  "use server";
-  await decideAction(proposalId, "approve");
-}
+export const dynamic = "force-dynamic";
 
-async function rejectAction(proposalId: string, formData: FormData): Promise<void> {
-  "use server";
-  await decideAction(proposalId, "reject", String(formData.get("reason") ?? ""));
-}
+export default async function ApprovalsPage() {
+  const world = await getCurrentWorld();
+  if (!world) redirect("/onboarding");
 
-async function editAction(proposalId: string, formData: FormData): Promise<void> {
-  "use server";
-  await decideAction(proposalId, "edit", undefined, String(formData.get("caption") ?? ""));
-}
-
-function formatRange(range: [number, number]): string {
-  return `${range[0]}–${range[1]}`;
-}
-
-export default function ApprovalsPage() {
-  const world = getWorld();
-  if (!world) {
-    return <p className="text-sm text-muted-foreground">Seed a world to review proposals.</p>;
-  }
-  const pending = getPendingProposals(world.id);
+  const proposals = getPendingProposals(world.id);
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-4">
-      <h1 className="text-lg font-semibold">Approvals</h1>
-      {pending.length === 0 && (
-        <p className="text-sm text-muted-foreground">
-          No pending proposals — run a heartbeat to get new ones.
+    <div className="mx-auto max-w-3xl space-y-4 p-6">
+      <div>
+        <h1 className="font-heading text-xl font-semibold">Approvals</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {proposals.length === 0
+            ? "Nothing waiting on you."
+            : `${proposals.length} proposal${proposals.length === 1 ? "" : "s"} waiting on a decision.`}
         </p>
-      )}
-      {pending.map((proposal) => (
-        <Card key={proposal.id}>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Badge>{proposal.kind}</Badge>
-              <Badge variant={proposal.riskClass === "sensitive" ? "destructive" : "outline"}>
-                {proposal.riskClass}
-              </Badge>
-              <span className="ml-auto font-mono text-xs text-muted-foreground">
-                proposed tick {proposal.createdTick}
-              </span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            {proposal.kind === "post" ? (
-              <div className="flex flex-col gap-1">
-                <p className="text-sm leading-relaxed">{proposal.payload.caption}</p>
-                <p className="text-xs text-muted-foreground">
-                  {proposal.payload.archetype} · {proposal.payload.timeSlot} ·{" "}
-                  {proposal.payload.topic} · publishes tick {proposal.payload.scheduledTick}
-                </p>
-                {(proposal.payload.hashtags?.length ?? 0) > 0 && (
-                  <p className="text-xs text-primary/80">{proposal.payload.hashtags?.join(" ")}</p>
-                )}
-              </div>
-            ) : (
-              <p className="text-sm">
-                DM reply ({proposal.payload.qualification}): {proposal.payload.text}
-              </p>
-            )}
+      </div>
 
-            <p className="text-sm text-muted-foreground">Why: {proposal.reasoning}</p>
-
-            {proposal.ruleIds.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {proposal.ruleIds.map((ruleId) => (
-                  <Badge key={ruleId} variant="secondary">
-                    {ruleId}
-                  </Badge>
-                ))}
-              </div>
-            )}
-
-            <p className="font-mono text-xs text-muted-foreground">
-              predicted: impressions {formatRange(proposal.predictedEffect.impressions)} · likes{" "}
-              {formatRange(proposal.predictedEffect.likes)} · clicks{" "}
-              {formatRange(proposal.predictedEffect.linkClicks)} · signups{" "}
-              {formatRange(proposal.predictedEffect.signups)}
-            </p>
-
-            <Separator />
-
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <form action={approveAction.bind(null, proposal.id)}>
-                  <Button type="submit" size="sm">Approve</Button>
-                </form>
-                <form
-                  action={rejectAction.bind(null, proposal.id)}
-                  className="flex flex-1 items-center gap-2"
-                >
-                  <Input name="reason" placeholder="Reason for rejection (required)" required />
-                  <Button type="submit" variant="destructive" size="sm">Reject</Button>
-                </form>
-              </div>
-              {proposal.kind === "post" && (
-                <form action={editAction.bind(null, proposal.id)} className="flex flex-col gap-2">
-                  <Textarea name="caption" defaultValue={proposal.payload.caption ?? ""} required />
-                  <Button type="submit" variant="outline" size="sm" className="self-start">
-                    Save edit &amp; approve
-                  </Button>
-                </form>
-              )}
-            </div>
-          </CardContent>
+      {proposals.length === 0 ? (
+        <Card className="p-8 text-center text-sm text-muted-foreground">
+          {world.mode === "autopilot"
+            ? "Autopilot is on — only sensitive actions land here."
+            : "Run a heartbeat to generate the next proposal."}
         </Card>
-      ))}
+      ) : (
+        proposals.map((proposal) => <ProposalCard key={proposal.id} proposal={proposal} />)
+      )}
     </div>
   );
 }
