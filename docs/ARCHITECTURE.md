@@ -181,8 +181,10 @@ export type AgentRole =
   | "strategist" | "copywriter" | "critic" | "analyst"
   | "coach" | "community" | "persona";
 export function modelFor(role: AgentRole);
-  // strategist/copywriter/coach -> anthropic(MODEL_ACTOR); critic/analyst -> openai(MODEL_JUDGE);
-  // community/persona -> openai(MODEL_CHEAP). Cross-family judging is load-bearing (D7).
+  // Local Ollama by default (D19): strategist/copywriter/coach -> MODEL_ACTOR_LOCAL (Qwen3);
+  // critic/analyst -> MODEL_JUDGE_LOCAL (Gemma 3); community/persona -> MODEL_CHEAP_LOCAL.
+  // Opt-in cloud (MODEL_PROVIDER=cloud, untested): anthropic/openai equivalents.
+  // Cross-family judging is load-bearing either way (D7).
 export async function callAgent<T>(
   role: AgentRole, schema: z.ZodType<T>, system: string, user: string,
   opts: { worldSeed: string; refId: string },

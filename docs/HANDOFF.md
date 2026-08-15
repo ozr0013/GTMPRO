@@ -37,7 +37,7 @@ Team merge landed: Minh's Track B (B1-B5 + 8 test suites) and Omar's Track C (fu
 - **Track A (Anurup)** — COMPLETE. A2 persona DM continuation (`sim/dm.ts`), A3 two-wave engagement with velocity boost + follow conversion + churn (`sim/engine.ts`), A4 golden-run guard (`tests/golden.test.ts` — regenerate deliberately with `UPDATE_GOLDEN=1` after intended sim changes).
 - **Track B (Minh)** — B1-B5 merged. Remaining: image-budget spend guard for the art director, and porting any unique assertions from the pre-merge spine loop test if gaps appear.
 - **Track C (Omar)** — C5 only: hero-post image generation (`artdirector.ts`, gated by image budget) + `scripts/prewarm-demo.ts` producing the committed `demo-snapshot.db` offline fallback.
-- **All hands (submission)** — live-mode validation (`npm run smoke`, one real Claude+GPT run), rehearse `docs/DEMO.md` twice, record the 3-5 min video, final README pass.
+- **All hands (submission)** — DONE: live-local validation (`npm run smoke` + two e2e runs on Ollama — see PROGRESS B6). Remaining: rehearse `docs/DEMO.md` twice from the live-local runbook. No cloud keys are used anywhere (D19); the demo runs on Qwen3/Gemma 3 via Ollama with the mock snapshot as fallback.
 
 ## Known deliberate deviations
 

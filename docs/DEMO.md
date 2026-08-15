@@ -65,7 +65,8 @@ Target runtime 4:50. Rehearse twice from a fresh seed before recording (Task F2)
 Demo day needs no network: `scripts/prewarm-demo.ts` (Task C5) runs the demo path ahead of time and caches the result as a committed `demo-snapshot.db`. If Ollama or the machine misbehaves, stop the dev server and restart with
 
 ```bash
-MODEL_MODE=mock DB_PATH=./demo-snapshot.db npm run dev
+cp demo-snapshot.db demo-live.db   # replay on a copy — never mutate the committed snapshot
+MODEL_MODE=mock DB_PATH=./demo-live.db npm run dev
 ```
 
 and replay from the 2:15 mark — every scene above still works because the loop runs fully offline (mock agents now read their context: proposals cite the newest playbook rules and typed rejections still become visible rules).

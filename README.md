@@ -33,22 +33,24 @@ flowchart LR
     Bandits --> Strategist
 ```
 
-## Models — who does what, and why two families
+## Models — fully local, zero API keys, and why two families
 
-| Role | Model family | Job |
+The entire system runs on **free local models via Ollama** — no Anthropic or OpenAI keys, ever. This is the validated demo configuration (see `docs/LOCAL_MODELS.md` for RAM tiers down to 12 GB laptops and measured end-to-end timings).
+
+| Role | Local model | Job |
 |---|---|---|
-| Strategist | Claude (`MODEL_ACTOR`) | Picks the next best action; cites playbook rule IDs + bandit stats; predicts effect ranges (scored for calibration) |
-| Copywriter | Claude | Captions, hashtags, creative briefs per voice rules |
-| Coach | Claude | Distills outcomes + human feedback into playbook rule deltas |
-| Red-team Critic | GPT (`MODEL_JUDGE`) | Pre-flight review: brand safety, spam risk, guardrails |
-| Analyst | GPT | Post-hoc: actual vs predicted, factor attribution, lessons |
-| Community Mgr | GPT (`MODEL_CHEAP`) | DM replies; 3-turn qualification → meeting booked / disqualified |
-| Persona voices | GPT (cheap) | In-character comments and DMs for the simulated audience |
-| Art Director | `MODEL_IMAGE` | Hero-post images, budget-capped |
+| Strategist | Qwen3 (`MODEL_ACTOR_LOCAL`) | Picks the next best action; cites playbook rule IDs + bandit stats; predicts effect ranges (scored for calibration) |
+| Copywriter | Qwen3 | Captions, hashtags, creative briefs per voice rules |
+| Coach | Qwen3 | Distills outcomes + human feedback into playbook rule deltas |
+| Red-team Critic | Gemma 3 (`MODEL_JUDGE_LOCAL`) | Pre-flight review: brand safety, spam risk, guardrails |
+| Analyst | Gemma 3 | Post-hoc: actual vs predicted, factor attribution, lessons |
+| Community Mgr | Qwen3-small (`MODEL_CHEAP_LOCAL`) | DM replies; 3-turn qualification → meeting booked / disqualified |
+| Persona voices | Qwen3-small | In-character comments and DMs for the simulated audience |
+| Art Director | seeded local SVG | Hero-post creative cards, budget-capped (cloud image models optional) |
 
-**Actors and their evaluators are deliberately different model families.** LLM judges systematically favor their own outputs (~10% for GPT-4o, up to ~25% for Claude models, plus same-family bias — Panickssery et al., [arXiv:2410.21819](https://arxiv.org/abs/2410.21819)). Claude acts; GPT judges. The evaluation signal that drives learning is independent of the writer by construction.
+**Actors and their evaluators are deliberately different model families.** LLM judges systematically favor their own outputs (~10% for GPT-4o, up to ~25% for Claude models, plus same-family bias — Panickssery et al., [arXiv:2410.21819](https://arxiv.org/abs/2410.21819)). Qwen acts; Gemma judges. The evaluation signal that drives learning is independent of the writer by construction.
 
-**Fully local, zero-API-key mode:** set `MODEL_PROVIDER=local` and the same loop runs on free local models via Ollama — Qwen3 acts, Gemma 3 judges (family separation preserved), tiered configs down to 12 GB laptops. See `docs/LOCAL_MODELS.md`.
+A cloud provider path (Claude acts / GPT judges, `MODEL_PROVIDER=cloud`) exists for portability but is opt-in and untested — this project has never run on cloud API keys.
 
 ## Self-improvement = behavior change, not stored notes
 
@@ -68,13 +70,13 @@ The playbook is full-copy versioned: human-editable, diffable, and revertible, w
 
 ```bash
 asdf install                 # Node 22.23.2 (pinned in .tool-versions)
-cp .env.example .env.local   # mock mode needs NO API keys
+cp .env.example .env.local   # mock mode needs NO API keys — and live mode doesn't either
 npm i
 npm run db:seed              # schema self-bootstraps; seeds a demo world
 npm run dev                  # http://localhost:3000
 ```
 
-Everything runs offline in mock mode (`MODEL_MODE=mock`, the default): heartbeat, approvals, simulation, learning. For live model calls, fill `ANTHROPIC_API_KEY` + `OPENAI_API_KEY` in `.env.local` and validate with `npm run smoke`.
+Everything runs offline in mock mode (`MODEL_MODE=mock`, the default): heartbeat, approvals, simulation, learning. For live model calls — still zero API keys — install [Ollama](https://ollama.com), pull your RAM tier's models (`ollama pull qwen3:8b gemma3:12b qwen3:4b` on 16-32 GB), start it with `OLLAMA_KEEP_ALIVE=45m ollama serve`, set `MODEL_MODE=live` in `.env.local`, and validate with `npm run smoke`. Full runbook: `docs/LOCAL_MODELS.md`.
 
 Try the loop: top bar → **Run heartbeat** → open **Approvals**, read the proposal's reasoning and evidence chips → Approve one → **+1 day** → watch the **Feed** fill with engagement and the **Activity** trail record strategist → critic → human → publisher → analyst → coach.
 
@@ -89,5 +91,20 @@ Try the loop: top bar → **Run heartbeat** → open **Approvals**, read the pro
 ## Bounty judging map
 
 End-to-end GTM impact: full simulated funnel to booked meetings · Learning loop: playbook diffs + bandit posteriors + calibration · Trust: propose/autopilot, caps, trail, rollback · UX: Mission Control with evidence-citing proposals · Originality: simulated-market-with-ground-truth + cross-family judging. Bonuses: proactive heartbeat, experiment selection, editable memory, rollback, budget caps.
+
+## Roadmap — from reactive rules to long-term memory management
+
+**Shipping today (submission day):**
+
+- **Failure memory** — retired rules, typed rejections, and missed-outcome combos are fed back into every coach digest and strategist context, so the agent stops repeating historical mistakes (no vector store needed: at playbook scale, SQL + an LLM reading all rules beats embeddings).
+- **Librarian consolidation** — when the playbook grows past 10 rules, a consolidation pass merges overlapping rules into contextual ones and retires contradictions; human rejection rules are never auto-retired.
+- **Sandbox dreaming** — before proposing, the agent ranks every (archetype × slot × topic) variant against its *learned* model of the audience (bandit posteriors × observed engagement rates) and shows the dream rank on each approval card. Deliberately never reads the hidden ground truth — the dream is what the agent believes, and the Reveal tab grades it.
+- **Earned autonomy** — sustained calibration accuracy (predicted ranges containing actuals) lets the agent auto-approve low-risk posts; sensitive actions stay human-gated forever.
+
+**Next (deferred by design, not by accident):**
+
+- Campaign-arc rewards and time-decayed attribution (a Day-10 meeting rewarding Day-7 nurture posts)
+- Twin-world frozen-baseline benchmark (mathematically prove the learned agent beats its Genesis self)
+- Toxic-version detection with a rollback recommendation card; bandit posterior restore on rollback
 
 *Hackathon build in progress — see `docs/PROGRESS.md` for live status.*

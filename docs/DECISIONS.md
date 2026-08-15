@@ -42,7 +42,7 @@ Append-only. New entries take the next number; never edit or delete an existing 
 
 - Context: LLM evaluators systematically favor outputs from their own model family (self-preference bias; Panickssery et al., arXiv 2410.21819).
 - Decision: Claude acts (Strategist, Copywriter, Coach) and GPT judges (Critic, Analyst); an evaluator never shares a family with the actor it judges.
-- Consequence: Live mode requires both provider keys, and `modelFor()` in `src/lib/agents/models.ts` enforces the mapping.
+- Consequence: Live mode requires both provider keys, and `modelFor()` in `src/lib/agents/models.ts` enforces the mapping. *(Key requirement superseded by D22 — local models are the default; the family-separation principle stands.)*
 
 ## D8 — Request-driven sim time
 
@@ -127,3 +127,9 @@ Append-only. New entries take the next number; never edit or delete an existing 
 - Context: The golden run exposed nondeterminism: mock-mode outputs derive their RNG from `callAgent` refIds, and two runners keyed refIds on row UUIDs.
 - Decision: Every RNG stream and every `callAgent` refId must be keyed on stable identifiers — persona handles, post stream keys, turn counts, ticks — never row UUIDs. Activity-log row references may still use UUIDs.
 - Consequence: Same seed ⇒ same simulation, byte for byte; `tests/golden.test.ts` enforces the rule permanently (regenerate deliberately with `UPDATE_GOLDEN=1`).
+
+## D22 — Local models are the default provider; no cloud keys, ever
+
+- Context: The project runs entirely on local Ollama models (validated on submission day: smoke 3/3, two e2e runs, zero quarantines); no Anthropic/OpenAI keys were ever provisioned, and the zero-key story is part of the product's identity.
+- Decision: `MODEL_PROVIDER` defaults to `local` (Qwen3 acts, Gemma 3 judges — D7's family separation preserved). The cloud path remains in `models.ts` for portability but is opt-in (`MODEL_PROVIDER=cloud`) and explicitly untested.
+- Consequence: A fresh clone in live mode talks to Ollama, `.env.example` and the README lead with the local tiers, and no code path ever requires a paid API key.

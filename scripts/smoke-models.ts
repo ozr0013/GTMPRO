@@ -38,7 +38,7 @@ async function main() {
   loadEnvLocal();
 
   let checks: [string, () => Promise<unknown>][];
-  if ((process.env.MODEL_PROVIDER ?? "cloud") === "local") {
+  if ((process.env.MODEL_PROVIDER ?? "local") === "local") {
     // Local (Ollama) mode: three text models, no image model (feed uses placeholder
     // creative cards by design). Setup runbook: docs/LOCAL_MODELS.md
     const { createOpenAICompatible } = await import("@ai-sdk/openai-compatible");

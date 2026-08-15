@@ -41,6 +41,8 @@ public/generated/
 .worktrees/
 # demo-snapshot.db itself is committed (C5); its WAL sidecars are not
 demo-snapshot.db-*
+# fallback replays run on a copy of the snapshot (see docs/DEMO.md)
+demo-live.db*
 
 # vercel
 .vercel

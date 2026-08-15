@@ -1,6 +1,6 @@
 import { db } from "@/lib/db/client";
 import { playbookVersions, playbookRules, banditArms, banditSnapshots } from "@/lib/db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
 export interface PlaybookChanges {
@@ -36,10 +36,14 @@ function latestVersion(worldId: string) {
 }
 
 function rulesOf(worldId: string, versionId: string) {
+  // Insertion order is load-bearing: carried-forward parent rules come first and
+  // coach additions last, and the strategist's "newest rules" citation logic
+  // (mock and prompt) reads the tail of this list. Pin it explicitly.
   return db
     .select()
     .from(playbookRules)
     .where(and(eq(playbookRules.worldId, worldId), eq(playbookRules.versionId, versionId)))
+    .orderBy(sql`rowid`)
     .all();
 }
 

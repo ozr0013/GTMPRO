@@ -27,9 +27,12 @@ export type AgentRole =
   | "persona"
   | "genesis";
 
-/** true when running against a local OpenAI-compatible server (Ollama) instead of cloud APIs */
+/** true when running against a local OpenAI-compatible server (Ollama) instead of cloud APIs.
+ * Local is the default and the only validated live path — this project runs on
+ * zero API keys (docs/LOCAL_MODELS.md). Set MODEL_PROVIDER=cloud to opt into
+ * the untested cloud fallback. */
 export function isLocalProvider(): boolean {
-  return (process.env.MODEL_PROVIDER ?? "cloud") === "local";
+  return (process.env.MODEL_PROVIDER ?? "local") === "local";
 }
 
 /** Local model names per role group. Cheap roles default to the judge model so
@@ -60,8 +63,9 @@ function localModelNameFor(role: AgentRole): string {
 
 // Cross-family assignment is intentional: evaluators (critic/analyst) are a different
 // model family than the actors they judge (self-preference bias mitigation — see README).
-// Cloud: Claude acts, GPT judges. Local: Qwen acts, Gemma judges — same principle,
-// zero API cost (see docs/LOCAL_MODELS.md).
+// Local (the default, and the only validated path): Qwen3 acts, Gemma 3 judges —
+// zero API keys (docs/LOCAL_MODELS.md). Cloud (opt-in via MODEL_PROVIDER=cloud,
+// untested): Claude acts, GPT judges — same cross-family principle.
 export function modelFor(role: AgentRole) {
   if (isLocalProvider()) {
     const local = createOpenAICompatible({
@@ -135,9 +139,10 @@ export async function callAgent<T>(
 
 /** Rule keys from the "Playbook rules:" section of a rendered strategist context.
  * Order matches the playbook: seed rules first, coach additions appended — so the
- * last keys are the newest learning. */
+ * last keys are the newest learning. Delimiters match renderContext's exact
+ * header lines so rule text mentioning "Bandit arms" cannot truncate the scan. */
 function contextRuleKeys(user: string): string[] {
-  const section = user.split("Playbook rules:")[1]?.split("Bandit arms")[0] ?? "";
+  const section = user.split("Playbook rules:\n")[1]?.split("\nBandit arms (cite banditArmId")[0] ?? "";
   return [...section.matchAll(/^\[([\w-]+)\]/gm)].map((m) => m[1]);
 }
 
@@ -225,13 +230,23 @@ function mockFor(role: AgentRole, opts: { worldSeed: string; refId: string }, us
         });
       }
       if (digest?.rejections?.length) {
-        const reason = digest.rejections[0].reason?.trim() || "rejected without a stated reason";
-        add.push({
-          category: "content",
-          text: `Human rejection: "${reason.slice(0, 90)}" — do not propose this pattern again.`,
-          evidenceRefs: digest.rejections.map((r) => r.proposalId),
-          sourceType: "rejection",
-        });
+        // Echo each distinct typed reason (capped) — a digest can carry several
+        // rejections and every one of them is human training signal.
+        const seen = new Set<string>();
+        for (const rejection of digest.rejections) {
+          const reason = rejection.reason?.trim() || "rejected without a stated reason";
+          if (seen.has(reason)) continue;
+          seen.add(reason);
+          if (seen.size > 3) break;
+          add.push({
+            category: "content",
+            text: `Human rejection: "${reason.slice(0, 90)}" — do not propose this pattern again.`,
+            evidenceRefs: digest.rejections
+              .filter((r) => (r.reason?.trim() || "rejected without a stated reason") === reason)
+              .map((r) => r.proposalId),
+            sourceType: "rejection",
+          });
+        }
       }
       if (digest?.outcomeReports?.length) {
         const total = digest.outcomeReports.length;
