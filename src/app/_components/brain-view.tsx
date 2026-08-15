@@ -10,14 +10,17 @@ import type {
 import { PlaybookPanel } from "./playbook-panel";
 import { ArmGrid } from "./arm-grid";
 import { CalibrationCharts } from "./calibration-charts";
+import { RevealPanel } from "./reveal-panel";
+import type { GroundTruthReveal } from "@/lib/db/groundTruth";
 import { cn } from "@/lib/utils";
 
-type Tab = "playbook" | "bandits" | "calibration";
+type Tab = "playbook" | "bandits" | "calibration" | "reveal";
 
 const TABS: { id: Tab; label: string; note: string }[] = [
   { id: "playbook", label: "Playbook", note: "what it believes" },
   { id: "bandits", label: "Bandits", note: "what it's testing" },
   { id: "calibration", label: "Calibration", note: "whether to trust it" },
+  { id: "reveal", label: "Reveal", note: "was it right" },
 ];
 
 /**
@@ -30,18 +33,20 @@ export function BrainView({
   history,
   arms,
   calibration,
+  reveal,
 }: {
   worldId: string;
   playbook: PlaybookView;
   history: PlaybookVersionView[];
   arms: ArmView[];
   calibration: CalibrationSeries;
+  reveal: GroundTruthReveal | null;
 }) {
   const [tab, setTab] = useState<Tab>("playbook");
 
   return (
     <div>
-      <div role="tablist" aria-label="Brain views" className="mt-4 grid gap-4 sm:grid-cols-3">
+      <div role="tablist" aria-label="Brain views" className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {TABS.map(({ id, label, note }) => {
           const active = tab === id;
           return (
@@ -72,6 +77,7 @@ export function BrainView({
         )}
         {tab === "bandits" && <ArmGrid arms={arms} />}
         {tab === "calibration" && <CalibrationCharts series={calibration} />}
+        {tab === "reveal" && <RevealPanel reveal={reveal} />}
       </div>
     </div>
   );

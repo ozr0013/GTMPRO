@@ -6,6 +6,7 @@ import {
   getCalibrationSeries,
   getPlaybookHistory,
 } from "@/lib/db/queries";
+import { getGroundTruthReveal } from "@/lib/db/groundTruth";
 import { BrainView } from "../_components/brain-view";
 
 export const dynamic = "force-dynamic";
@@ -30,6 +31,7 @@ export default async function BrainPage() {
         history={getPlaybookHistory(world.id)}
         arms={getArmDistributions(world.id)}
         calibration={getCalibrationSeries(world.id)}
+        reveal={getGroundTruthReveal(world.id)}
       />
     </div>
   );
