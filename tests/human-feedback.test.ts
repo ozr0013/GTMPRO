@@ -3,7 +3,11 @@ import { buildTinyWorld } from "./fixtures/world";
 import { db } from "@/lib/db/client";
 import { playbookRules, playbookVersions, proposals } from "@/lib/db/schema";
 import { addressedRejections, outstandingRejections } from "@/lib/learning/humanFeedback";
-import { dropDuplicateAdds, textSimilarity } from "@/lib/learning/ruleDedupe";
+import {
+  collapseConvergedRules,
+  dropDuplicateAdds,
+  textSimilarity,
+} from "@/lib/learning/ruleDedupe";
 import { desc, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
@@ -131,5 +135,30 @@ describe("near-duplicate rules are dropped", () => {
       { text: "Captions must never lead with a discount offer." },
     ];
     expect(dropDuplicateAdds(adds, []).kept).toHaveLength(1);
+  });
+
+  it("collapses rules that amendments converged onto the same text", () => {
+    // observed live: three separately-keyed rules amended into one sentence
+    const converged = "Educational posts must include a clear call-to-action directing users to a link.";
+    const rules = [
+      { ruleKey: "rule-a", text: converged },
+      { ruleKey: "rule-b", text: converged },
+      { ruleKey: "rule-c", text: converged },
+      { ruleKey: "rule-d", text: "Post memes between 8 and 10am for college students." },
+    ];
+    // rule-b carries the evidence, so it must be the survivor
+    const { retire, groups } = collapseConvergedRules(rules, (k) => (k === "rule-b" ? 3 : 0));
+    expect(retire.sort()).toEqual(["rule-a", "rule-c"]);
+    expect(groups[0].kept).toBe("rule-b");
+    expect(retire).not.toContain("rule-d");
+  });
+
+  it("leaves a healthy playbook untouched", () => {
+    const rules = [
+      { ruleKey: "r1", text: "Post education content between 7 and 9am." },
+      { ruleKey: "r2", text: "Never mention competitor pricing." },
+      { ruleKey: "r3", text: "Cafe owners respond to product posts, not memes." },
+    ];
+    expect(collapseConvergedRules(rules).retire).toHaveLength(0);
   });
 });

@@ -9,7 +9,7 @@ import { createPlaybookVersion, getActiveRules, type PlaybookChanges } from "@/l
 import { getRulePerformance, underperformingRules } from "@/lib/learning/ruleEvidence";
 import { applyMeasuredConfidence } from "@/lib/learning/ruleConfidence";
 import { addressedRejections, outstandingRejections } from "@/lib/learning/humanFeedback";
-import { dropDuplicateAdds } from "@/lib/learning/ruleDedupe";
+import { collapseConvergedRules, dropDuplicateAdds } from "@/lib/learning/ruleDedupe";
 import { desc, eq } from "drizzle-orm";
 
 /** Unified word-level diff (`-removed` / `+added` / ` unchanged`). */
@@ -200,6 +200,29 @@ export async function runCoach(worldId: string, tick: number): Promise<{ version
       status: "ok",
       summary: `Dropped ${deduped.dropped.length} rule(s) that restated an existing one`,
       detail: deduped.dropped,
+    });
+  }
+
+  // Amends can converge separate rules onto the same sentence, which the add-guard
+  // above cannot see. Project the post-change rule set and retire whatever has
+  // collapsed into a duplicate, keeping the copy with the most evidence.
+  const projected = getActiveRules(worldId)
+    .filter((r) => !changes.retire.includes(r.ruleKey))
+    .map((r) => ({
+      ruleKey: r.ruleKey,
+      text: changes.amend.find((a) => a.ruleKey === r.ruleKey)?.text ?? r.text,
+    }));
+  const converged = collapseConvergedRules(projected, (key) => perf.get(key)?.citations ?? 0);
+  if (converged.retire.length > 0) {
+    changes.retire = [...changes.retire, ...converged.retire];
+    logActivity({
+      worldId,
+      tick,
+      actor: "coach",
+      action: "dedupe",
+      status: "ok",
+      summary: `Collapsed ${converged.retire.length} rule(s) that amendments had converged onto an existing rule`,
+      detail: converged.groups,
     });
   }
 
